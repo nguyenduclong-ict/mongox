@@ -19,7 +19,11 @@ impl BackupService {
             args.push(format!("--collection={}", config.collections[0].trim()));
         } else if config.collections.len() > 1 {
             for col in &config.collections {
-                args.push(format!("--nsInclude={}.{}", config.database.trim(), col.trim()));
+                args.push(format!(
+                    "--nsInclude={}.{}",
+                    config.database.trim(),
+                    col.trim()
+                ));
             }
         }
 
@@ -132,10 +136,17 @@ impl BackupService {
                         bytes_transferred: bytes,
                         elapsed_ms,
                         output_path: Some(config.output_path.clone()),
-                        message: format!("Backup completed successfully into {}", config.output_path),
+                        message: format!(
+                            "Backup completed successfully into {}",
+                            config.output_path
+                        ),
                     });
                 } else {
-                    return Err(format!("mongodump failed with exit code {:?}: {}", output.status.code(), stderr));
+                    return Err(format!(
+                        "mongodump failed with exit code {:?}: {}",
+                        output.status.code(),
+                        stderr
+                    ));
                 }
             }
         }
@@ -148,7 +159,10 @@ impl BackupService {
             bytes_transferred: 8388608,
             elapsed_ms: elapsed_ms.max(450),
             output_path: Some(config.output_path.clone()),
-            message: format!("Backup completed successfully into {} (Simulated)", config.output_path),
+            message: format!(
+                "Backup completed successfully into {} (Simulated)",
+                config.output_path
+            ),
         })
     }
 
@@ -182,7 +196,11 @@ impl BackupService {
                         message: format!("Restored data from {}", config.input_path),
                     });
                 } else {
-                    return Err(format!("mongorestore failed with exit code {:?}: {}", output.status.code(), stderr));
+                    return Err(format!(
+                        "mongorestore failed with exit code {:?}: {}",
+                        output.status.code(),
+                        stderr
+                    ));
                 }
             }
         }

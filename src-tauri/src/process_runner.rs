@@ -215,8 +215,13 @@ impl ProcessRunner {
         patch_json: &str,
         mongosh_path: Option<&Path>,
     ) -> Result<u64, String> {
-        let parsed: Value = serde_json::from_str(patch_json)
+        let mut parsed: Value = serde_json::from_str(patch_json)
             .map_err(|e| format!("Invalid JSON syntax in update patch: {}", e))?;
+
+        // Prevent MongoDB error: Performing an update on the path '_id' would modify the immutable field '_id'
+        if let Value::Object(ref mut map) = parsed {
+            map.remove("_id");
+        }
 
         if let Some(path) = mongosh_path {
             if path.is_file() {
@@ -231,7 +236,9 @@ impl ProcessRunner {
                         }} catch(e) {{
                             filterId = {:?};
                         }}
-                        const res = coll.updateOne({{ _id: filterId }}, {{ $set: {} }});
+                        const updatePayload = {};
+                        delete updatePayload._id;
+                        const res = coll.updateOne({{ _id: filterId }}, {{ $set: updatePayload }});
                         print("MONGOUPDATE_RESULT:" + JSON.stringify({{ modifiedCount: res.modifiedCount }}));
                     }} catch (e) {{
                         print("MONGOUPDATE_RESULT:ERROR:" + e.message);

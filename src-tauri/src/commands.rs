@@ -90,7 +90,10 @@ pub async fn delete_connection(state: State<'_, AppState>, id: String) -> Result
 }
 
 #[tauri::command]
-pub async fn test_connection(state: State<'_, AppState>, uri: String) -> Result<PingResult, String> {
+pub async fn test_connection(
+    state: State<'_, AppState>,
+    uri: String,
+) -> Result<PingResult, String> {
     let mongosh_path = state
         .provisioner
         .find_tool(ToolKind::Mongosh)

@@ -8,9 +8,7 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 use uuid::Uuid;
 
-use crate::models::{
-    CollectionInfo, ConnectionProfile, DatabaseInfo, Environment, PingResult,
-};
+use crate::models::{CollectionInfo, ConnectionProfile, DatabaseInfo, Environment, PingResult};
 
 pub struct ConnectionManager {
     storage_path: PathBuf,
@@ -56,8 +54,8 @@ impl ConnectionManager {
         }
         let json_str = serde_json::to_string_pretty(profiles)
             .map_err(|e| format!("Failed to serialize connection profiles: {}", e))?;
-        let mut file = File::create(path)
-            .map_err(|e| format!("Failed to create connections.json: {}", e))?;
+        let mut file =
+            File::create(path).map_err(|e| format!("Failed to create connections.json: {}", e))?;
         file.write_all(json_str.as_bytes())
             .map_err(|e| format!("Failed to write connections.json: {}", e))?;
         Ok(())
@@ -76,7 +74,10 @@ impl ConnectionManager {
             .cloned()
     }
 
-    pub fn save_profile(&self, mut profile: ConnectionProfile) -> Result<ConnectionProfile, String> {
+    pub fn save_profile(
+        &self,
+        mut profile: ConnectionProfile,
+    ) -> Result<ConnectionProfile, String> {
         let mut list = self.profiles.write().unwrap();
         let now = Utc::now().to_rfc3339();
 
@@ -150,13 +151,16 @@ impl ConnectionManager {
                     let stdout = String::from_utf8_lossy(&out.stdout);
                     for line in stdout.lines() {
                         if let Some(json_part) = line.strip_prefix("MONGOPING_RESULT:") {
-                            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_part) {
+                            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_part)
+                            {
                                 let ok = parsed["ok"].as_bool().unwrap_or(false);
                                 if ok {
                                     return Ok(PingResult {
                                         success: true,
                                         latency_ms: parsed["latency_ms"].as_u64().unwrap_or(12),
-                                        server_version: parsed["version"].as_str().map(|s| s.to_string()),
+                                        server_version: parsed["version"]
+                                            .as_str()
+                                            .map(|s| s.to_string()),
                                         error: None,
                                     });
                                 } else {
@@ -300,25 +304,21 @@ impl ConnectionManager {
                 name: "config".to_string(),
                 size_on_disk: 2097152,
                 empty: false,
-                collections: vec![
-                    CollectionInfo {
-                        name: "settings".to_string(),
-                        count: 1,
-                        size_bytes: 4096,
-                    },
-                ],
+                collections: vec![CollectionInfo {
+                    name: "settings".to_string(),
+                    count: 1,
+                    size_bytes: 4096,
+                }],
             },
             DatabaseInfo {
                 name: "local".to_string(),
                 size_on_disk: 4194304,
                 empty: false,
-                collections: vec![
-                    CollectionInfo {
-                        name: "startup_log".to_string(),
-                        count: 4,
-                        size_bytes: 16384,
-                    },
-                ],
+                collections: vec![CollectionInfo {
+                    name: "startup_log".to_string(),
+                    count: 4,
+                    size_bytes: 16384,
+                }],
             },
         ])
     }
@@ -397,15 +397,22 @@ mod tests {
 
     #[test]
     fn test_parse_host_port_from_uri() {
-        let (host, port) = ConnectionManager::parse_host_port_from_uri("mongodb://localhost:27017").unwrap();
+        let (host, port) =
+            ConnectionManager::parse_host_port_from_uri("mongodb://localhost:27017").unwrap();
         assert_eq!(host, "localhost");
         assert_eq!(port, 27017);
 
-        let (host2, port2) = ConnectionManager::parse_host_port_from_uri("mongodb://admin:pass@db.example.com:28018/test?ssl=true").unwrap();
+        let (host2, port2) = ConnectionManager::parse_host_port_from_uri(
+            "mongodb://admin:pass@db.example.com:28018/test?ssl=true",
+        )
+        .unwrap();
         assert_eq!(host2, "db.example.com");
         assert_eq!(port2, 28018);
 
-        let (host3, port3) = ConnectionManager::parse_host_port_from_uri("mongodb+srv://user:pass@cluster0.mongodb.net/prod").unwrap();
+        let (host3, port3) = ConnectionManager::parse_host_port_from_uri(
+            "mongodb+srv://user:pass@cluster0.mongodb.net/prod",
+        )
+        .unwrap();
         assert_eq!(host3, "cluster0.mongodb.net");
         assert_eq!(port3, 27017);
     }
@@ -414,7 +421,10 @@ mod tests {
     fn test_sanitize_uri() {
         let raw = "mongodb://superuser:SecretP@ss123@cluster0.example.com:27017/admin";
         let sanitized = ConnectionManager::sanitize_uri(raw);
-        assert_eq!(sanitized, "mongodb://superuser:***@cluster0.example.com:27017/admin");
+        assert_eq!(
+            sanitized,
+            "mongodb://superuser:***@cluster0.example.com:27017/admin"
+        );
     }
 
     #[test]
