@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="128" fill="#0B0F17"/>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="none" stroke="#1F2937" stroke-width="4"/>
+  
+  <!-- Outer subtle glow -->
+  <circle cx="256" cy="256" r="180" fill="#10B981" opacity="0.08" />
+
+  <!-- Mongox Leaf / Geometric Crystal Shape -->
+  <path d="M 256,70 C 270,140 370,220 370,310 C 370,390 310,442 256,442 C 202,442 142,390 142,310 C 142,220 242,140 256,70 Z" fill="#10B981" />
+  
+  <!-- Modern Geometric Inner Highlight -->
+  <path d="M 256,70 C 265,140 330,220 330,310 C 330,370 295,420 256,442 Z" fill="#00ED64" opacity="0.85"/>
+  
+  <!-- Central Tech Cutout X -->
+  <path d="M 216,216 L 296,296 M 296,216 L 216,296" stroke="#08090A" stroke-width="28" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,155 @@
+# Feature: Document Explorer and CRUD Operations
+
+## 1. Overview
+
+### Purpose
+Provide an intuitive, fast, and multi-modal document inspection and editing workspace, allowing users to query, filter, sort, view, create, edit, duplicate, and delete MongoDB documents.
+
+### Background
+Inspecting documents in various shapes and schemas is the primary day-to-day task when administering MongoDB databases. Users need flexible view modes (tabular view for flat records, hierarchical tree view for nested structures, and raw JSON view for copy-pasting and direct manipulation), coupled with an expressive query bar.
+
+### Status
+Ready for Implementation
+
+## 2. Scope
+
+### In Scope
+- Multi-modal viewing engine:
+  - **Table View**: Flat spreadsheet-style table with pinned `_id` column, resizable columns, and BSON type badges.
+  - **Tree View**: Interactive expandable JSON node hierarchy with in-place value editing.
+  - **Raw JSON View**: Monospaced text editor with syntax highlighting, automatic indentation, and validation.
+- Query Bar:
+  - Filter input supporting MongoDB query operators (`$eq`, `$gt`, `$in`, `$regex`, `$or`, etc.).
+  - Sort, Project, Limit, and Skip inputs.
+  - Recent query history and query bookmarking.
+- Full Document CRUD:
+  - Single and bulk document insertions.
+  - In-place document editing and modal-based JSON editing.
+  - Document duplication and deletion.
+  - Fast clipboard export (as JSON, ObjectId string, or Python/Node dict).
+
+### Out of Scope
+- Direct binary file upload for GridFS storage (planned for later release).
+
+## 3. Actors and Permissions
+- **Actor:** Developer / Data Engineer / DBA.
+- **Permissions:** Read and write permissions corresponding to the authenticated MongoDB database user account.
+- **Restrictions:** Destructive deletions on `Production` environments invoke Production Guard confirmation.
+
+## 4. Functional Requirements
+
+### FR-DOC-001: Query Execution and Pagination
+- **Description:** Executes user-defined queries against the selected collection with limit and pagination controls.
+- **Preconditions:** Connected to a valid database with an active collection selected.
+- **Expected Behavior:** Parses the query filter, sort, project, and limit parameters. Dispatches the query via `mongosh` subprocess. Returns parsed JSON results with pagination metadata (page, total count, elapsed time).
+- **Failure Behavior:** If the filter contains syntax errors or invalid operators, display inline error messages identifying the character position of the syntax issue.
+- **Acceptance Criteria:**
+  - AC-DOC-01: Displays query results matching the filter criteria.
+  - AC-DOC-02: Applies sort orders (ascending `1`, descending `-1`) and field projections correctly.
+  - AC-DOC-03: Displays total execution time in milliseconds.
+
+### FR-DOC-002: Multi-Modal Data Views
+- **Description:** Synchronizes data across Table, Tree, and Raw JSON view modes.
+- **Preconditions:** Query results loaded.
+- **Expected Behavior:**
+  - Table View: Renders top-level document fields as columns, pinning `_id` on the left. Displays BSON type chips (e.g., `ObjectId`, `Date`, `Number`, `Array`).
+  - Tree View: Renders expandable nested objects with inline primitive value editing.
+  - Raw JSON View: Renders formatted JSON text with syntax highlighting and line numbers.
+- **Failure Behavior:** When switching between view modes, active selections and scroll positions are retained where applicable.
+- **Acceptance Criteria:**
+  - AC-DOC-04: Users can switch views without triggering a new database round-trip.
+  - AC-DOC-05: Columns in Table View support drag-to-resize.
+
+### FR-DOC-003: Document Creation and Updates
+- **Description:** Enables insertion of new documents and updates to existing documents.
+- **Preconditions:** Collection selected.
+- **Expected Behavior:** Validate JSON syntax before dispatching write commands to the database. Generate a new `ObjectId` automatically if `_id` is omitted in newly inserted documents.
+- **Failure Behavior:** Display database validation errors (such as duplicate key errors on unique indexes) in a dedicated alert box.
+- **Acceptance Criteria:**
+  - AC-DOC-06: Inserts valid single or bulk documents into the collection.
+  - AC-DOC-07: Updates selected document fields and reflects changes immediately in the current view.
+
+### FR-DOC-004: Safe Document Deletion
+- **Description:** Removes selected documents from the collection.
+- **Preconditions:** One or more documents selected.
+- **Expected Behavior:** Display a confirmation dialog detailing the count of documents to be deleted. Execute deletion command upon confirmation.
+- **Failure Behavior:** Prevent deletion if confirmation is cancelled.
+- **Acceptance Criteria:**
+  - AC-DOC-08: Deletes targeted document by `_id`.
+  - AC-DOC-09: Refreshes view and decrements collection document count badge.
+
+## 5. Business Rules
+### BR-DOC-001: Pinned Primary Key
+- The `_id` field remains pinned to the leftmost position in Table View and is marked read-only during document updates.
+
+### BR-DOC-002: Data Type Preservation
+- Extended JSON / EJSON conventions preserve BSON types (e.g., `{"$oid": "..."}`, `{"$date": "..."}`).
+
+## 6. User & System Flows
+
+### Query Flow
+1. User types `{ "status": "active", "age": { "$gte": 21 } }` into QueryBar.
+2. User clicks "Run Query" (`Ctrl + Enter`).
+3. Frontend validates JSON syntax and calls Tauri command `execute_query`.
+4. Rust backend executes query via `mongosh` subprocess with `--json=relaxed`.
+5. Frontend receives document array and populates the active view mode.
+
+### Document Edit Flow (Tree View)
+1. User expands an object node in Tree View.
+2. User double-clicks a scalar string value.
+3. Input field appears inline with current value prefilled.
+4. User updates value and presses `Enter`.
+5. System prompts for update confirmation and sends patch command to backend.
+6. Backend applies update by `_id` and returns updated document.
+
+## 7. Data Requirements
+- **QueryParameters Entity:**
+  - `collection`: String.
+  - `filter`: String (JSON).
+  - `sort`: Optional String (JSON).
+  - `projection`: Optional String (JSON).
+  - `limit`: Integer (default 50, maximum 1000).
+  - `skip`: Integer (default 0).
+- **QueryResult Entity:**
+  - `documents`: Array of parsed BSON/JSON objects.
+  - `total_count`: Integer.
+  - `execution_time_ms`: Integer.
+
+## 8. API & Integration
+- **Tauri Commands:**
+  - `execute_query(params: QueryParameters) -> Result<QueryResult, String>`
+  - `insert_document(collection: String, document: String) -> Result<String, String>`
+  - `update_document(collection: String, id: String, patch: String) -> Result<String, String>`
+  - `delete_documents(collection: String, ids: Vec<String>) -> Result<u64, String>`
+
+## 9. Security & Privacy
+- Input parameters are escaped and passed via structured evaluation APIs to prevent script injection into shell subprocesses.
+
+## 10. Edge Cases
+- Extremely large documents (>16MB BSON limit or deeply nested >100 levels): Tree view limits initial expansion depth to 5 levels to preserve UI rendering performance.
+- High document volume pagination: UI uses virtualized lists (virtual scrolling) in Table View to maintain smooth 60 FPS scrolling.
+
+## 11. Testing Requirements
+- Unit tests validating query parameter stringification and JSON parsing.
+- Component tests for Table View column resizing and Tree View node toggling.
+- Integration tests executing real queries against a local MongoDB container.
+
+## 12. Open Questions and Assumptions
+### Confirmed Decisions
+- UI provides three view modes: Table, Tree, and Raw JSON.
+- Queries execute via `mongosh --json=relaxed`.
+
+### Assumptions
+- Modern browser webview handles virtualized lists up to 1,000 documents per page smoothly.
+
+### Open Questions
+- None.
+
+## 13. Implementation Notes
+- Frontend: Monaco Editor / CodeMirror for Raw JSON view, `@tanstack/react-table` for virtualized Table View.
+- Files: `src/components/DocumentExplorer/QueryBar.tsx`, `src/components/DocumentExplorer/TableView.tsx`, `src/components/DocumentExplorer/TreeView.tsx`, `src/components/DocumentExplorer/RawJsonView.tsx`.
+
+## 14. Related Documents
+- [System Architecture Overview](../../architecture/system-overview.md)
+- [Connection Manager Specification](../connection-manager/spec.md)
+- [Product Requirements](../../product/requirements.md)
