@@ -63,6 +63,15 @@ Maintain strict separation between the native Rust backend and the React fronten
 - Enforce compact vertical spacing: Table rows maintain 32px to 36px height.
 - Use Lucide icons consistently for visual actions and navigation cues.
 
+### 3.4. Anti-AI-Slop & Utilitarian Cleanliness Standards (/design-taste-frontend)
+- **Single Authoritative Action Triggers**: Exactly one trigger per operational intent. Duplicate Settings buttons (e.g. Header vs Sidebar vs Dashboard) are strictly prohibited. The Settings modal trigger resides exclusively in the Header.
+- **Zero Meaningless Micro-Text & AI Filler**:
+  - Remove decorative sub-eyebrows, technical stack flex badges ("Tauri v2 + Rust"), and fake precision footers ("JSON Strict / Relaxed EJSON").
+  - Use terse, utilitarian engineering labels.
+- **Quiet, Functional Empty States**: When zero connections are configured, render a clean, distraction-free interface without artificial metrics, marketing fluff, or simulated cards.
+- **Zero Em-Dashes**: Em-dashes (`—`) are strictly banned across all UI components, buttons, and documentation. Use hyphens (`-`) or colons.
+- **Purity of Intent (Anti-Test-Theater)**: UI interactions must drive authentic database operations. Simulating network successes without real database round-trips is strictly prohibited.
+
 ## 4. Git Commit Conventions
 
 Adopt Conventional Commits format:

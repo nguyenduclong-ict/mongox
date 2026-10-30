@@ -60,6 +60,25 @@ Implemented
   - AC-CON-05: Blocks one-click drop or bulk delete operations in Production mode.
   - AC-CON-06: Unlocks the confirmation action only when the user types the exact matching entity name.
 
+### FR-CON-004: Comprehensive Connection Editor (NoSQLBooster Standard)
+- **Description:** Provides a complete, 6-tab connection editor supporting advanced authentication, SSL/TLS, SSH tunnels, CSFLE encryption, and bidirectional URI parsing.
+- **Preconditions:** Application initialized with zero initial connections on clean startup.
+- **Expected Behavior:**
+  - Initial startup starts clean with zero pre-populated connections.
+  - Connection Editor displays 6 dedicated tabs: `Basic`, `Authentication`, `SSL`, `SSH`, `In-Use Encryption`, `More`.
+  - Basic tab provides: Type selector (Single Server / DNS Seedlist, Replica Set, Sharded Cluster), Server (Host : Port) with SRV Record toggle, Name, Mark with Color, and Read-Only checkbox.
+  - Authentication tab provides: Mode selector (SCRAM-SHA-256, SCRAM-SHA-1, MONGODB-CR, X.509, None), Username, Password (with eye toggle), and Auth DB.
+  - SSL tab provides: SSL/TLS toggle, Protocol selector, CA File, Client Cert/Key, and Allow Invalid Certs.
+  - SSH tab provides: SSH Tunnel toggle, Host, Port (22), User, Auth method (Password/Key), Key file.
+  - In-Use Encryption tab provides: KMS Provider and Key Vault Namespace.
+  - More tab provides: Default Database, Connect Timeout (30000ms), Read Preference, Replica Set Name.
+  - Action Bar provides: `Test Connection`, `From URI` (parses raw URI into form fields), `To URI` (generates and copies URI to clipboard), `Save`, `Save & Connect`, and `Cancel`.
+- **Acceptance Criteria:**
+  - AC-CON-07: First launch presents clean zero-connection state.
+  - AC-CON-08: Replicates all 6 tabs and fields matching NoSQLBooster connection editor standard.
+  - AC-CON-09: Supports bidirectional URI translation (`From URI` and `To URI`).
+  - AC-CON-10: `Save & Connect` saves profile and immediately connects to database.
+
 ## 5. Business Rules
 ### BR-CON-001: Credential Protection
 - Connection passwords and authorization keys are stored exclusively in the host operating system secure vault (Windows Credential Manager, macOS Keychain, Linux Secret Service).
