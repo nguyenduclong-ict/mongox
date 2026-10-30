@@ -3,13 +3,12 @@ import { test, expect } from "@playwright/test";
 test.describe("Connection Lifecycle & Management", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    // Wait for the app root to mount
     await expect(page.locator("#root")).toBeVisible();
   });
 
   test("should display existing connections in Object Explorer", async ({ page }) => {
-    await expect(page.getByText("Object Explorer")).toBeVisible();
-    await expect(page.getByText("Local MongoDB")).toBeVisible();
+    await expect(page.locator("aside").getByText("Object Explorer")).toBeVisible();
+    await expect(page.locator("aside").getByText("Local MongoDB")).toBeVisible();
   });
 
   test("should open New Connection modal and validate form inputs", async ({ page }) => {
@@ -18,8 +17,8 @@ test.describe("Connection Lifecycle & Management", () => {
 
     // Verify modal elements
     await expect(page.getByText("New MongoDB Connection")).toBeVisible();
-    await expect(page.getByLabel("Profile Label")).toBeVisible();
-    await expect(page.getByLabel("Environment Tag")).toBeVisible();
+    await expect(page.locator("#profile-label")).toBeVisible();
+    await expect(page.locator("#env-tag")).toBeVisible();
 
     // Switch between URI and Detailed Parameters tabs
     await page.getByRole("button", { name: "Detailed Parameters" }).click();
@@ -35,7 +34,7 @@ test.describe("Connection Lifecycle & Management", () => {
     await page.getByTitle("Add New Connection Profile").click();
 
     // Select 'Production' in Environment Tag dropdown
-    await page.getByLabel("Environment Tag").selectOption("production");
+    await page.locator("#env-tag").selectOption("production");
 
     // Verify Production Guard warning banner appears
     await expect(page.getByText("Production Guard Enabled:")).toBeVisible();
@@ -48,7 +47,7 @@ test.describe("Connection Lifecycle & Management", () => {
     await page.getByRole("button", { name: "Test Connection" }).click();
 
     // Ping status should render
-    await expect(page.getByText(/Connected successfully|● \d+ ms/)).toBeVisible();
+    await expect(page.getByText(/Connected successfully|● \d+ ms/).first()).toBeVisible();
   });
 
   test("should cancel and close Connection modal", async ({ page }) => {

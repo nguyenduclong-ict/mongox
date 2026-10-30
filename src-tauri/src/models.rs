@@ -162,6 +162,18 @@ pub struct QueryResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExplainResult {
+    pub stage: String,
+    pub is_collection_scan: bool,
+    pub execution_time_millis: u64,
+    pub total_docs_examined: u64,
+    pub total_keys_examined: u64,
+    pub n_returned: u64,
+    pub index_name: Option<String>,
+    pub raw_stats_json: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DocumentMutation {
     pub connection_id: String,
     pub database: String,

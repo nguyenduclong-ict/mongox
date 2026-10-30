@@ -42,6 +42,7 @@ pub fn run() {
             commands::test_connection,
             commands::get_connection_hierarchy,
             commands::execute_query,
+            commands::explain_query,
             commands::insert_document,
             commands::update_document,
             commands::delete_document,

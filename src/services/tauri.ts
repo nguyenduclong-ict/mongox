@@ -6,6 +6,7 @@ import {
   DatabaseInfo,
   QueryParams,
   QueryResult,
+  ExplainResult,
   BackupConfig,
   RestoreConfig,
   ArchiveMetadata,
@@ -203,6 +204,24 @@ export async function executeQuery(params: QueryParams): Promise<QueryResult> {
     page: 1,
     page_size: params.limit,
     elapsed_ms: 0,
+  };
+}
+
+export async function explainQuery(params: QueryParams): Promise<ExplainResult> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<ExplainResult>("explain_query", { params });
+  }
+
+  return {
+    stage: "COLLSCAN",
+    is_collection_scan: true,
+    execution_time_millis: 18,
+    total_docs_examined: 500,
+    total_keys_examined: 0,
+    n_returned: 50,
+    index_name: null,
+    raw_stats_json: JSON.stringify({ note: "Simulation explain plan" }, null, 2),
   };
 }
 

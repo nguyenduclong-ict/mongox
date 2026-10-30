@@ -4,8 +4,15 @@ import { TableView } from "./TableView";
 import { TreeView } from "./TreeView";
 import { RawJsonView } from "./RawJsonView";
 import { DocumentModal } from "./DocumentModal";
-import { executeQuery, insertDocument, updateDocument, deleteDocument } from "../../services/tauri";
-import { QueryResult } from "../../types";
+import { ExplainPlanModal } from "./ExplainPlanModal";
+import {
+  executeQuery,
+  explainQuery,
+  insertDocument,
+  updateDocument,
+  deleteDocument,
+} from "../../services/tauri";
+import { ExplainResult, QueryResult } from "../../types";
 import {
   Table as TableIcon,
   FolderTree,
@@ -54,6 +61,10 @@ export const DocumentExplorer: React.FC<DocumentExplorerProps> = ({
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingDoc, setEditingDoc] = useState<Record<string, unknown> | null>(null);
 
+  // Explain Plan state
+  const [explainResult, setExplainResult] = useState<ExplainResult | null>(null);
+  const [isExplainOpen, setIsExplainOpen] = useState<boolean>(false);
+
   const runQuery = useCallback(async () => {
     if (!connectionId || !database || !collection) return;
 
@@ -83,6 +94,26 @@ export const DocumentExplorer: React.FC<DocumentExplorerProps> = ({
       runQuery();
     }
   }, [connectionId, database, collection, runQuery]);
+
+  const handleExplain = async () => {
+    if (!connectionId || !database || !collection) return;
+    try {
+      const res = await explainQuery({
+        connection_id: connectionId,
+        database,
+        collection,
+        filter: filter.trim(),
+        sort: sort.trim() ? sort.trim() : undefined,
+        projection: projection.trim() ? projection.trim() : undefined,
+        limit,
+        skip,
+      });
+      setExplainResult(res);
+      setIsExplainOpen(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
 
   const handleOpenInsert = () => {
     setEditingDoc(null);
@@ -120,6 +151,13 @@ export const DocumentExplorer: React.FC<DocumentExplorerProps> = ({
     } else {
       await performDelete();
     }
+  };
+
+  const handleUpdateCell = async (docId: string, field: string, newValue: unknown) => {
+    if (!connectionId || !database || !collection) return;
+    const patch = JSON.stringify({ [field]: newValue });
+    await updateDocument(connectionId, database, collection, docId, patch);
+    await runQuery();
   };
 
   if (!connectionId || !database || !collection) {
@@ -220,6 +258,7 @@ export const DocumentExplorer: React.FC<DocumentExplorerProps> = ({
         limit={limit}
         setLimit={setLimit}
         onExecute={runQuery}
+        onExplain={handleExplain}
         isLoading={isLoading}
         elapsedMs={queryResult.elapsed_ms}
         totalCount={queryResult.total_count}
@@ -239,6 +278,7 @@ export const DocumentExplorer: React.FC<DocumentExplorerProps> = ({
             documents={queryResult.documents}
             onEdit={handleOpenEdit}
             onDelete={handleDeleteDocument}
+            onUpdateCell={handleUpdateCell}
           />
         )}
         {viewMode === "tree" && (
@@ -258,6 +298,15 @@ export const DocumentExplorer: React.FC<DocumentExplorerProps> = ({
         onClose={() => setIsModalOpen(false)}
         onSave={handleSaveDocument}
         document={editingDoc}
+      />
+
+      {/* Visual Explain Plan Modal */}
+      <ExplainPlanModal
+        isOpen={isExplainOpen}
+        onClose={() => setIsExplainOpen(false)}
+        explain={explainResult}
+        database={database}
+        collection={collection}
       />
     </div>
   );

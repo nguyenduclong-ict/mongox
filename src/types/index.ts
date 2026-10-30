@@ -76,6 +76,17 @@ export interface QueryResult {
   elapsed_ms: number;
 }
 
+export interface ExplainResult {
+  stage: string;
+  is_collection_scan: boolean;
+  execution_time_millis: number;
+  total_docs_examined: number;
+  total_keys_examined: number;
+  n_returned: number;
+  index_name: string | null;
+  raw_stats_json: string;
+}
+
 // ==========================================
 // Backup & Restore Types
 // ==========================================

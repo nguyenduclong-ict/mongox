@@ -3,9 +3,9 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::models::{
     ArchiveMetadata, BackupConfig, BackupFileInfo, ConnectionProfile, CreateIndexRequest,
-    DatabaseInfo, DownloadProgress, DropIndexRequest, ExportConfig, ExportFormat, ImportConfig,
-    ImportPreview, IndexInfo, JobSummary, PingResult, QueryParams, QueryResult, RestoreConfig,
-    ToolKind, ToolStatus,
+    DatabaseInfo, DownloadProgress, DropIndexRequest, ExplainResult, ExportConfig, ExportFormat,
+    ImportConfig, ImportPreview, IndexInfo, JobSummary, PingResult, QueryParams, QueryResult,
+    RestoreConfig, ToolKind, ToolStatus,
 };
 use crate::process_runner::{create_hidden_command, ProcessRunner};
 use crate::AppState;
@@ -141,6 +141,24 @@ pub async fn execute_query(
         .map(|(p, _)| p);
 
     ProcessRunner::execute_query(&profile.uri, &params, mongosh_path.as_deref()).await
+}
+
+#[tauri::command]
+pub async fn explain_query(
+    state: State<'_, AppState>,
+    params: QueryParams,
+) -> Result<ExplainResult, String> {
+    let profile = state
+        .connection_manager
+        .get_profile(&params.connection_id)
+        .ok_or_else(|| format!("Connection profile '{}' not found", params.connection_id))?;
+
+    let mongosh_path = state
+        .provisioner
+        .find_tool(ToolKind::Mongosh)
+        .map(|(p, _)| p);
+
+    ProcessRunner::explain_query(&profile.uri, &params, mongosh_path.as_deref()).await
 }
 
 #[tauri::command]

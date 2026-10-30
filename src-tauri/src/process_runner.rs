@@ -3,7 +3,9 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use crate::models::{CreateIndexRequest, DropIndexRequest, IndexInfo, QueryParams, QueryResult};
+use crate::models::{
+    CreateIndexRequest, DropIndexRequest, ExplainResult, IndexInfo, QueryParams, QueryResult,
+};
 
 pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -127,6 +129,99 @@ impl ProcessRunner {
                     output.status.code(),
                     err_detail
                 ));
+            }
+        }
+
+        Err(
+            "mongosh engine is not available. Please ensure it is installed via Settings."
+                .to_string(),
+        )
+    }
+
+    /// Builds safe mongosh evaluation command for explaining execution plan
+    pub fn build_explain_script(params: &QueryParams) -> String {
+        let filter_str = if params.filter.trim().is_empty() {
+            "{}"
+        } else {
+            params.filter.trim()
+        };
+
+        format!(
+            r#"
+            try {{
+                const targetDb = db.getSiblingDB({:?});
+                const coll = targetDb.getCollection({:?});
+                const exp = coll.find({}).explain("executionStats");
+                const stats = exp.executionStats || {{}};
+                const queryPlanner = exp.queryPlanner || {{}};
+                const winningPlan = queryPlanner.winningPlan || {{}};
+
+                let stage = winningPlan.stage || "UNKNOWN";
+                let indexName = null;
+                let current = winningPlan;
+                while (current) {{
+                    if (current.stage === "IXSCAN" || current.stage === "COLLSCAN") {{
+                        stage = current.stage;
+                        if (current.indexName) indexName = current.indexName;
+                        break;
+                    }}
+                    current = current.inputStage;
+                }}
+
+                print("MONGOEXPLAIN_RESULT:" + JSON.stringify({{
+                    stage: stage,
+                    is_collection_scan: stage === "COLLSCAN",
+                    execution_time_millis: stats.executionTimeMillis || 0,
+                    total_docs_examined: stats.totalDocsExamined || 0,
+                    total_keys_examined: stats.totalKeysExamined || 0,
+                    n_returned: stats.nReturned || 0,
+                    index_name: indexName,
+                    raw_stats_json: JSON.stringify(exp, null, 2)
+                }}));
+            }} catch(e) {{
+                print("MONGOEXPLAIN_RESULT:ERROR:" + e.message);
+            }}
+            "#,
+            params.database, params.collection, filter_str
+        )
+    }
+
+    /// Execute query plan explanation
+    pub async fn explain_query(
+        uri: &str,
+        params: &QueryParams,
+        mongosh_path: Option<&Path>,
+    ) -> Result<ExplainResult, String> {
+        if let Some(path) = mongosh_path {
+            if path.is_file() {
+                let script = Self::build_explain_script(params);
+                let output = create_hidden_command(path)
+                    .arg(uri)
+                    .arg("--quiet")
+                    .arg("--eval")
+                    .arg(&script)
+                    .output()
+                    .await
+                    .map_err(|e| format!("Failed to spawn mongosh: {}", e))?;
+
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                for line in stdout.lines() {
+                    if let Some(json_content) = line.strip_prefix("MONGOEXPLAIN_RESULT:") {
+                        if let Some(err_msg) = json_content.strip_prefix("ERROR:") {
+                            return Err(format!("MongoDB error: {}", err_msg));
+                        }
+                        if let Ok(res) = serde_json::from_str::<ExplainResult>(json_content) {
+                            return Ok(res);
+                        }
+                    }
+                }
+                let err_detail = if stderr.trim().is_empty() {
+                    stdout.trim()
+                } else {
+                    stderr.trim()
+                };
+                return Err(format!("Explain query failed: {}", err_detail));
             }
         }
 

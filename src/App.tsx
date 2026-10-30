@@ -27,9 +27,20 @@ import {
   previewImportFile,
   inspectArchive,
 } from "./services/tauri";
-import { Database, Plus, Sparkles, Layers } from "lucide-react";
+import { Database, Plus, Sparkles, Layers, FileText, X } from "lucide-react";
+
+interface WorkspaceTab {
+  id: string;
+  title: string;
+  database: string;
+  collection: string;
+}
 
 export const App: React.FC = () => {
+  // Workspace Multi-Tab State
+  const [tabs, setTabs] = useState<WorkspaceTab[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+
   // Modal States
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isConnModalOpen, setIsConnModalOpen] = useState<boolean>(false);
@@ -100,6 +111,54 @@ export const App: React.FC = () => {
 
   const activeCount = tools.filter((t) => t.is_available).length;
   const isProduction = activeConnection?.environment === "production";
+
+  // Tab Handlers
+  const handleSelectCollection = (db: string, col: string) => {
+    const tabId = `tab-${db}-${col}`;
+    setTabs((prev) => {
+      if (prev.some((t) => t.id === tabId)) {
+        return prev;
+      }
+      return [
+        ...prev,
+        {
+          id: tabId,
+          title: col,
+          database: db,
+          collection: col,
+        },
+      ];
+    });
+    setActiveTabId(tabId);
+    setSelectedDb(db);
+    setSelectedCollection(col);
+  };
+
+  const handleCloseTab = (tabId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setTabs((prev) => {
+      const updated = prev.filter((t) => t.id !== tabId);
+      if (activeTabId === tabId) {
+        if (updated.length > 0) {
+          const next = updated[updated.length - 1];
+          setActiveTabId(next.id);
+          setSelectedDb(next.database);
+          setSelectedCollection(next.collection);
+        } else {
+          setActiveTabId(null);
+          setSelectedDb(null);
+          setSelectedCollection(null);
+        }
+      }
+      return updated;
+    });
+  };
+
+  const handleSwitchTab = (tab: WorkspaceTab) => {
+    setActiveTabId(tab.id);
+    setSelectedDb(tab.database);
+    setSelectedCollection(tab.collection);
+  };
 
   // Modal Handlers
   const handleOpenNewConn = () => {
@@ -198,10 +257,7 @@ export const App: React.FC = () => {
           hierarchy={hierarchy}
           selectedDb={selectedDb}
           selectedCollection={selectedCollection}
-          onSelectCollection={(db, col) => {
-            setSelectedDb(db);
-            setSelectedCollection(col);
-          }}
+          onSelectCollection={handleSelectCollection}
           onOpenBackupModal={(db, col) =>
             setBackupModal({ isOpen: true, db, col })
           }
@@ -215,6 +271,43 @@ export const App: React.FC = () => {
         />
 
         <main className="flex-1 flex flex-col min-w-0 bg-canvas overflow-hidden">
+          {/* Multi-Tab Workspace Bar */}
+          {tabs.length > 0 && (
+            <div className="h-9 bg-panel border-b border-hairline flex items-center px-2 gap-1 overflow-x-auto shrink-0 select-none">
+              {tabs.map((tab) => {
+                const isActive = activeTabId === tab.id;
+                return (
+                  <div
+                    key={tab.id}
+                    onClick={() => handleSwitchTab(tab)}
+                    className={`h-7 px-2.5 rounded flex items-center gap-2 text-xs font-mono cursor-pointer transition-colors ${
+                      isActive
+                        ? "bg-surface text-white border border-hairline shadow-sm"
+                        : "text-gray-400 hover:text-gray-200 hover:bg-surface/50 border border-transparent"
+                    }`}
+                  >
+                    <FileText
+                      className={`w-3.5 h-3.5 ${
+                        isActive ? "text-mongo" : "text-gray-500"
+                      }`}
+                    />
+                    <span className="truncate max-w-[140px]">
+                      <span className="text-gray-500">{tab.database}.</span>
+                      <span className="font-semibold">{tab.title}</span>
+                    </span>
+                    <button
+                      onClick={(e) => handleCloseTab(tab.id, e)}
+                      className="p-0.5 rounded hover:bg-panel text-gray-500 hover:text-white"
+                      title="Close Tab"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {selectedDb && selectedCollection ? (
             <CollectionWorkspace
               connectionId={activeConnection?.id || null}

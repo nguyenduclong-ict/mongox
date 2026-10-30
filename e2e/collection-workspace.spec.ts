@@ -8,7 +8,7 @@ test.describe("Collection Workspace, Index Management & Schema Analysis", () => 
 
   test("should display getting-started guidance when no collection is selected", async ({ page }) => {
     await expect(page.getByText(/Connected to|No Active Connection/)).toBeVisible();
-    await expect(page.getByRole("button", { name: "New Connection" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "New Connection", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Settings & CLI Tools" })).toBeVisible();
   });
 

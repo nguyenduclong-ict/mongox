@@ -12,9 +12,14 @@ import {
   Upload,
   Search,
   ExternalLink,
+  Zap,
+  BarChart3,
+  Trash2,
+  Edit2,
 } from "lucide-react";
 import { ConnectionProfile, DatabaseInfo, Environment } from "../types";
 import { openBackupDirectory } from "../services/tauri";
+import { ContextMenu, ContextMenuItem } from "./ContextMenu";
 
 interface SidebarProps {
   connections: ConnectionProfile[];
@@ -30,6 +35,12 @@ interface SidebarProps {
   onOpenRestoreModal: (db: string) => void;
   onOpenExportModal: (db: string, col: string) => void;
   onOpenImportModal: (db: string, col: string) => void;
+  onDropCollection?: (db: string, col: string) => void;
+  onDropDatabase?: (db: string) => void;
+  onEditConnection?: (conn: ConnectionProfile) => void;
+  onDeleteConnection?: (connId: string) => void;
+  onOpenIndexesTab?: (db: string, col: string) => void;
+  onOpenSchemaTab?: (db: string, col: string) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -43,8 +54,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   selectedCollection,
   onSelectCollection,
   onOpenBackupModal,
+  onOpenRestoreModal,
   onOpenExportModal,
   onOpenImportModal,
+  onDropCollection,
+  onDropDatabase,
+  onEditConnection,
+  onDeleteConnection,
+  onOpenIndexesTab,
+  onOpenSchemaTab,
 }) => {
   const [filterText, setFilterText] = useState<string>("");
   const [expandedConns, setExpandedConns] = useState<Record<string, boolean>>({
@@ -54,6 +72,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
     store_db: true,
     analytics: true,
   });
+
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    items: ContextMenuItem[];
+  } | null>(null);
 
   const toggleConn = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -165,6 +189,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {/* Connection Root Node */}
               <div
                 onClick={() => onSelectConnection(conn)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setContextMenu({
+                    x: e.clientX,
+                    y: e.clientY,
+                    items: [
+                      {
+                        label: `Connect: ${conn.name}`,
+                        icon: Server,
+                        onClick: () => onSelectConnection(conn),
+                      },
+                      {
+                        label: "Edit Profile",
+                        icon: Edit2,
+                        onClick: () => onEditConnection?.(conn),
+                      },
+                      { divider: true },
+                      {
+                        label: "Delete Profile",
+                        icon: Trash2,
+                        danger: true,
+                        onClick: () => onDeleteConnection?.(conn.id),
+                      },
+                    ],
+                  });
+                }}
                 className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer transition-colors group ${
                   isActive
                     ? "bg-surface border border-hairline text-white shadow-sm"
@@ -211,6 +261,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         {/* Database Node */}
                         <div
                           onClick={(e) => toggleDb(db.name, e)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setContextMenu({
+                              x: e.clientX,
+                              y: e.clientY,
+                              items: [
+                                {
+                                  label: `Backup Database (${db.name})`,
+                                  icon: HardDriveDownload,
+                                  onClick: () => onOpenBackupModal(db.name, ""),
+                                },
+                                {
+                                  label: `Restore into (${db.name})`,
+                                  icon: Upload,
+                                  onClick: () => onOpenRestoreModal(db.name),
+                                },
+                                { divider: true },
+                                {
+                                  label: `Drop Database (${db.name})`,
+                                  icon: Trash2,
+                                  danger: true,
+                                  onClick: () => onDropDatabase?.(db.name),
+                                },
+                              ],
+                            });
+                          }}
                           className={`w-full flex items-center justify-between px-2 py-1 rounded text-xs cursor-pointer transition-colors group/db ${
                             isDbActive
                               ? "bg-surface/60 text-white"
@@ -253,6 +329,59 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                   <div
                                     key={col.name}
                                     onClick={() => onSelectCollection(db.name, col.name)}
+                                    onContextMenu={(e) => {
+                                      e.preventDefault();
+                                      setContextMenu({
+                                        x: e.clientX,
+                                        y: e.clientY,
+                                        items: [
+                                          {
+                                            label: `Open Documents (${col.name})`,
+                                            icon: FileText,
+                                            onClick: () => onSelectCollection(db.name, col.name),
+                                          },
+                                          {
+                                            label: "View Indexes",
+                                            icon: Zap,
+                                            onClick: () => {
+                                              onSelectCollection(db.name, col.name);
+                                              onOpenIndexesTab?.(db.name, col.name);
+                                            },
+                                          },
+                                          {
+                                            label: "Analyze Schema",
+                                            icon: BarChart3,
+                                            onClick: () => {
+                                              onSelectCollection(db.name, col.name);
+                                              onOpenSchemaTab?.(db.name, col.name);
+                                            },
+                                          },
+                                          { divider: true },
+                                          {
+                                            label: "Backup Collection",
+                                            icon: HardDriveDownload,
+                                            onClick: () => onOpenBackupModal(db.name, col.name),
+                                          },
+                                          {
+                                            label: "Export Data (CSV/JSON)",
+                                            icon: Share2,
+                                            onClick: () => onOpenExportModal(db.name, col.name),
+                                          },
+                                          {
+                                            label: "Import Data",
+                                            icon: Upload,
+                                            onClick: () => onOpenImportModal(db.name, col.name),
+                                          },
+                                          { divider: true },
+                                          {
+                                            label: `Drop Collection (${col.name})`,
+                                            icon: Trash2,
+                                            danger: true,
+                                            onClick: () => onDropCollection?.(db.name, col.name),
+                                          },
+                                        ],
+                                      });
+                                    }}
                                     className={`w-full flex items-center justify-between pl-2 pr-1.5 py-1 rounded text-[11px] font-mono cursor-pointer transition-colors group/col ${
                                       isColActive
                                         ? "bg-mongo/10 text-mongo border border-mongo/30 font-semibold"
@@ -347,6 +476,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span className="text-[10px] text-gray-600">CLI & Hub</span>
         </button>
       </div>
+
+      {/* Floating Context Menu */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </aside>
   );
 };
