@@ -1,0 +1,22 @@
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: mongox-test-db
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: mongox
+      MONGO_INITDB_ROOT_PASSWORD: mongoxpass
+      MONGO_INITDB_DATABASE: test_db
+    volumes:
+      - ./docker/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mongo_data:

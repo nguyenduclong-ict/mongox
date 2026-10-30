@@ -66,6 +66,14 @@ This document specifies the top-level functional and non-functional requirements
 ### NFR-003: Platform Support
 - The application natively targets Windows 10/11 (x64, arm64), macOS (Apple Silicon, Intel), and modern Linux distributions (AppImage, deb, rpm).
 
+### NFR-004: Large Dataset Scalability & Smooth Browsing
+- **Virtualized Viewport Rendering**: The Document Explorer employs virtualized row rendering, maintaining a consistent 60 FPS scrolling frame rate when browsing collections containing 1,000 to 1,000,000+ documents.
+- **Constant DOM Node Bounding**: Active DOM elements rendered inside Table and Tree views remain bounded under 1,500 nodes regardless of total collection size, eliminating browser memory degradation.
+- **Low-Latency Pagination**: Document batch pagination (20, 50, 100, 500 records per page) delivers sub-100ms render response times on standard hardware.
+- **Memory-Safe Streaming Data Movement**: Backup, restore, export, and import operations process documents as streaming chunks, capping resident memory usage (RSS < 150 MB) during multi-gigabyte data migrations.
+- **2D Scroll Stability**: The primary key (`_id`) remains rigidly pinned to the left margin during horizontal and vertical scrolling, preventing visual disorientation across wide schemas (50+ fields).
+- **Sub-Second Schema Sampling**: The Schema Analyzer samples 100 to 500 documents asynchronously, calculating field presence rates and BSON type distributions in under 500 milliseconds without blocking main thread interactions.
+
 ## 3. Related Documents
 
 - [Product Overview](./overview.md)

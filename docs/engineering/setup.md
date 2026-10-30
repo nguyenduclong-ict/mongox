@@ -74,24 +74,45 @@ Generated packages will be located in:
 - **macOS**: `src-tauri/target/release/bundle/dmg/` or `macos/`
 - **Linux**: `src-tauri/target/release/bundle/appimage/` or `deb/`
 
-## 5. Local MongoDB Testing Instance
+## 5. Local MongoDB Testing Instance with Docker Compose
 
-For integration testing, run a local MongoDB instance using Docker:
+Mongox provides a pre-configured `docker-compose.yml` file with automated database seeding:
 
 ```bash
-docker run -d \
-  --name mongox-test-db \
-  -p 27017:27017 \
-  -e MONGO_INITDB_ROOT_USERNAME=mongox \
-  -e MONGO_INITDB_ROOT_PASSWORD=secret \
-  mongo:7.0
+# Start containerized MongoDB 7.0 on port 27017
+docker compose up -d
 ```
 
-Connect via Mongox using the connection string:
-`mongodb://mongox:secret@localhost:27017/?authSource=admin`
+The container automatically mounts `docker/init-mongo.js` and seeds `test_db` with:
+- `customers` (100 documents with unique emails)
+- `orders` (500 documents with foreign customer references)
+- `products` (50 catalog products)
+- `large_dataset` (5,000 documents with compound indexes for virtualization benchmarks)
 
-## 6. Related Documents
+Connect using credentials:
+- **Connection URI**: `mongodb://mongox:mongoxpass@localhost:27017/test_db?authSource=admin`
 
+To shut down the container:
+```bash
+docker compose down
+```
+
+## 6. End-to-End Testing with Playwright
+
+Run the automated Playwright E2E scenario suite:
+
+```bash
+# Execute headless E2E tests
+npm run test:e2e
+
+# Open interactive Playwright Test UI
+npx playwright test --ui
+```
+
+## 7. Related Documents
+
+- [Playwright Test Plan](./playwright-test-plan.md)
+- [Testing Guidelines](./testing.md)
 - [System Architecture Overview](../architecture/system-overview.md)
 - [Engineering Guidelines](./guidelines.md)
 - [Security Guidelines](./security.md)

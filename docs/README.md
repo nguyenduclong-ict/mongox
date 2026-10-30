@@ -29,7 +29,9 @@ docs/
 ├── engineering/                   # Engineering guidelines and development workflows
 │   ├── setup.md                   # Local setup, prerequisites, and build steps
 │   ├── guidelines.md              # Code standards, formatting, project structure
-│   └── security.md                # Credential handling, subprocess isolation, safety guards
+│   ├── security.md                # Credential handling, subprocess isolation, safety guards
+│   ├── testing.md                 # Automated quality gates, unit & integration tests
+│   └── playwright-test-plan.md    # Playwright E2E automation architecture and coverage
 └── project/                       # Project management and milestone planning
     └── roadmap.md                 # Implementation roadmap and phase breakdown
 ```
@@ -60,4 +62,6 @@ docs/
 - [Development Setup](./engineering/setup.md): Prerequisites and local environment configuration.
 - [Engineering Guidelines](./engineering/guidelines.md): Code style, project structure conventions, and standards.
 - [Security Guidelines](./engineering/security.md): Credential protection and process sandboxing.
-- [Project Roadmap](./project/roadmap.md): Phased execution plan from P1 to P5.
+- [Testing Guidelines](./engineering/testing.md): Automated quality gates, unit tests, and CI/CD.
+- [Playwright E2E Test Plan](./engineering/playwright-test-plan.md): End-to-end scenario coverage matrix and containerized testing.
+- [Project Roadmap](./project/roadmap.md): Phased execution plan from P1 to P6.

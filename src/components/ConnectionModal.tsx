@@ -136,10 +136,11 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
           {/* Connection Name & Environment Tag */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1.5">
+              <label htmlFor="profile-label" className="block text-xs font-medium text-gray-300 mb-1.5">
                 Profile Label
               </label>
               <input
+                id="profile-label"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -150,10 +151,11 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1.5">
+              <label htmlFor="env-tag" className="block text-xs font-medium text-gray-300 mb-1.5">
                 Environment Tag
               </label>
               <select
+                id="env-tag"
                 value={environment}
                 onChange={(e) => setEnvironment(e.target.value as Environment)}
                 className="w-full px-3 py-1.5 bg-surface border border-hairline rounded-md text-xs text-white focus:outline-none focus:border-mongo transition-colors font-sans capitalize"

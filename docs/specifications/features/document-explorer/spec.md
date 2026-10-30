@@ -78,6 +78,15 @@ Implemented
   - AC-DOC-08: Deletes targeted document by `_id`.
   - AC-DOC-09: Refreshes view and decrements collection document count badge.
 
+### FR-DOC-005: Large Dataset Scalability and Virtualized Scrolling
+- **Description:** Renders and scrolls massive document collections smoothly using virtualized viewport buffering.
+- **Preconditions:** Collection with 1,000+ records selected.
+- **Expected Behavior:** Renders visible table rows dynamically while keeping overall DOM node count strictly under 1,500 elements. Sustains a 60 FPS scrolling frame rate during rapid vertical and horizontal navigation.
+- **Failure Behavior:** If pagination limits are increased to 500+ documents, viewport scrolling remains fluid without browser stuttering or memory spikes.
+- **Acceptance Criteria:**
+  - AC-DOC-10: Maintains 60 FPS scrolling and bounds active DOM nodes below 1,500 elements when viewing large datasets.
+  - AC-DOC-11: Keeps the primary key (`_id`) column rigidly pinned during both vertical and horizontal scroll gestures.
+
 ## 5. Business Rules
 ### BR-DOC-001: Pinned Primary Key
 - The `_id` field remains pinned to the leftmost position in Table View and is marked read-only during document updates.
