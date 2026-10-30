@@ -71,9 +71,21 @@ This document outlines the phased delivery milestones for the Mongox desktop cli
 - **Deliverables:**
   - Production-ready release packages verified across Windows, macOS, and Linux.
 
+### Phase 6 (P6): Professional Developer Ergonomics & Productivity Suite
+- **Objectives:**
+  - Implement **In-Place Inline Table Cell Editing** allowing users to double-click table cells to edit and commit scalar values directly.
+  - Implement **Multi-Tab Workspace Session Manager** supporting parallel collection tabs, index tabs, and query scripts with preserved filter states.
+  - Implement full-featured **Context Menu System (Right-Click)** across all Object Explorer connection, database, and collection nodes.
+  - Implement **Visual Explain Plan & Query Profiler** highlighting index usage (`IXSCAN`) and alerting on unindexed collection scans (`COLLSCAN`).
+  - Implement **Query History & Bookmarks** allowing one-click re-runs and saving frequently used filter expressions.
+- **Deliverables:**
+  - Commercial-grade developer ergonomics matching NoSQLBooster and Studio 3T with sub-second native Tauri v2 responsiveness.
+
 ## 3. Related Documents
 
 - [Product Overview](../product/overview.md)
 - [Product Requirements](../product/requirements.md)
 - [System Architecture Overview](../architecture/system-overview.md)
+- [ADR-0004: Ergonomic Workspace and Action Modals](../architecture/decisions/0004-ergonomic-workspace-and-action-modals.md)
+- [Workspace & Ergonomics Specification](../specifications/features/workspace-and-ergonomics/spec.md)
 - [Development Setup](../engineering/setup.md)
