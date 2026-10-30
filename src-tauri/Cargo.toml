@@ -28,6 +28,9 @@ dirs = "6.0"
 hex = "0.4"
 which = "7.0"
 thiserror = "2.0"
+uuid = { version = "1", features = ["v4", "serde"] }
+regex = "1"
+chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
 tempfile = "3.17"

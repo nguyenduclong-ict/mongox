@@ -30,7 +30,7 @@ This document outlines the phased delivery milestones for the Mongox desktop cli
 - **Deliverables:**
   - Application launches, validates environment, and provisions required CLI tools automatically. [Completed]
 
-### Phase 2 (P2): Connection Management & Hierarchy Navigation
+### Phase 2 (P2): Connection Management & Hierarchy Navigation (Completed)
 - **Objectives:**
   - Implement `connection.rs` with OS credential vault integration for password storage.
   - Build `ConnectionModal` supporting standard and SRV connection strings.
@@ -38,9 +38,9 @@ This document outlines the phased delivery milestones for the Mongox desktop cli
   - Build `Sidebar` tree rendering active clusters, databases, and collections with size/count badges.
   - Implement `Header` with breadcrumb navigation and connection status badges.
 - **Deliverables:**
-  - Full connection lifecycle management with live server connectivity and schema discovery.
+  - Full connection lifecycle management with live server connectivity and schema discovery. [Completed]
 
-### Phase 3 (P3): Document Explorer & CRUD Workspaces
+### Phase 3 (P3): Document Explorer & CRUD Workspaces (Completed)
 - **Objectives:**
   - Build `QueryBar` supporting JSON filter, sort, project, limit, and skip parameters.
   - Implement `TableView` with pinned `_id` and BSON data type chips.
@@ -49,9 +49,9 @@ This document outlines the phased delivery milestones for the Mongox desktop cli
   - Implement document creation, duplication, in-place edit, and deletion modals.
   - Implement `ProductionGuardModal` for destructive operations in production environments.
 - **Deliverables:**
-  - Complete document inspection and CRUD capabilities across three synchronized view modes.
+  - Complete document inspection and CRUD capabilities across three synchronized view modes. [Completed]
 
-### Phase 4 (P4): Advanced Tooling Hub
+### Phase 4 (P4): Advanced Tooling Hub (Completed)
 - **Objectives:**
   - Implement `Backup & Restore Hub` wrapping `mongodump` and `mongorestore` with Gzip compression and progress monitoring.
   - Implement `Export & Import Wizard` supporting JSON, CSV, and NDJSON with Smart Data Masking.

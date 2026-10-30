@@ -9,7 +9,7 @@ Provide an intuitive, fast, and multi-modal document inspection and editing work
 Inspecting documents in various shapes and schemas is the primary day-to-day task when administering MongoDB databases. Users need flexible view modes (tabular view for flat records, hierarchical tree view for nested structures, and raw JSON view for copy-pasting and direct manipulation), coupled with an expressive query bar.
 
 ### Status
-Ready for Implementation
+Implemented
 
 ## 2. Scope
 

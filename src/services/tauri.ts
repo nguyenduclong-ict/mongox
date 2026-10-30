@@ -1,9 +1,28 @@
-import { ToolStatus, DownloadProgress } from "../types";
+import {
+  ToolStatus,
+  DownloadProgress,
+  ConnectionProfile,
+  PingResult,
+  DatabaseInfo,
+  QueryParams,
+  QueryResult,
+  BackupConfig,
+  RestoreConfig,
+  ArchiveMetadata,
+  ExportConfig,
+  ImportConfig,
+  ImportPreview,
+  JobSummary,
+} from "../types";
 
 // Check if running inside Tauri environment
 export const isTauriEnvironment = (): boolean => {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 };
+
+// ==========================================
+// Tool Provisioning
+// ==========================================
 
 export async function fetchToolStatuses(): Promise<ToolStatus[]> {
   if (isTauriEnvironment()) {
@@ -11,43 +30,12 @@ export async function fetchToolStatuses(): Promise<ToolStatus[]> {
     return await invoke<ToolStatus[]>("get_tool_statuses");
   }
 
-  // Browser development fallback
   return [
-    {
-      name: "mongosh",
-      bundle: "shell",
-      is_available: false,
-      path: null,
-      source: null,
-    },
-    {
-      name: "mongodump",
-      bundle: "databasetools",
-      is_available: false,
-      path: null,
-      source: null,
-    },
-    {
-      name: "mongorestore",
-      bundle: "databasetools",
-      is_available: false,
-      path: null,
-      source: null,
-    },
-    {
-      name: "mongoexport",
-      bundle: "databasetools",
-      is_available: false,
-      path: null,
-      source: null,
-    },
-    {
-      name: "mongoimport",
-      bundle: "databasetools",
-      is_available: false,
-      path: null,
-      source: null,
-    },
+    { name: "mongosh", bundle: "shell", is_available: true, path: "C:\\Program Files\\mongosh\\bin\\mongosh.exe", source: "system_path" },
+    { name: "mongodump", bundle: "databasetools", is_available: true, path: "C:\\Program Files\\mongodb-tools\\bin\\mongodump.exe", source: "system_path" },
+    { name: "mongorestore", bundle: "databasetools", is_available: true, path: "C:\\Program Files\\mongodb-tools\\bin\\mongorestore.exe", source: "system_path" },
+    { name: "mongoexport", bundle: "databasetools", is_available: true, path: "C:\\Program Files\\mongodb-tools\\bin\\mongoexport.exe", source: "system_path" },
+    { name: "mongoimport", bundle: "databasetools", is_available: true, path: "C:\\Program Files\\mongodb-tools\\bin\\mongoimport.exe", source: "system_path" },
   ];
 }
 
@@ -75,20 +63,20 @@ export async function triggerEnsureToolReady(
     }
   }
 
-  // Browser simulation for UI verification
+  // Browser simulation
   if (onProgress) {
     const bundle = toolName === "mongosh" ? "shell" : "databasetools";
     const total = 45 * 1024 * 1024;
     onProgress({
       bundle,
       stage: "downloading",
-      downloaded_bytes: total * 0.4,
+      downloaded_bytes: total * 0.5,
       total_bytes: total,
-      progress_percent: 40.0,
-      speed_bytes_per_sec: 5_242_880,
+      progress_percent: 50.0,
+      speed_bytes_per_sec: 6_242_880,
       message: `Downloading ${bundle} archive... (simulated)`,
     });
-    await new Promise((r) => setTimeout(r, 600));
+    await new Promise((r) => setTimeout(r, 400));
     onProgress({
       bundle,
       stage: "verifying",
@@ -98,7 +86,7 @@ export async function triggerEnsureToolReady(
       speed_bytes_per_sec: 0,
       message: "Verifying SHA-256 cryptographic checksum...",
     });
-    await new Promise((r) => setTimeout(r, 400));
+    await new Promise((r) => setTimeout(r, 300));
     onProgress({
       bundle,
       stage: "ready",
@@ -120,4 +108,306 @@ export async function testToolVersion(toolName: string): Promise<string> {
   }
 
   return `${toolName} version v2.3.8 (Browser Simulation)`;
+}
+
+// ==========================================
+// Connection Manager APIs
+// ==========================================
+
+export async function listConnections(): Promise<ConnectionProfile[]> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<ConnectionProfile[]>("list_connections");
+  }
+
+  return [
+    {
+      id: "local-1",
+      name: "Local MongoDB",
+      uri: "mongodb://localhost:27017",
+      environment: "local",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+    {
+      id: "prod-atlas",
+      name: "Atlas Production Cluster",
+      uri: "mongodb+srv://admin:***@cluster0.mongodb.net/production",
+      environment: "production",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+  ];
+}
+
+export async function saveConnection(profile: ConnectionProfile): Promise<ConnectionProfile> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<ConnectionProfile>("save_connection", { profile });
+  }
+
+  return {
+    ...profile,
+    id: profile.id || `conn-${Date.now()}`,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export async function deleteConnection(id: string): Promise<void> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke<void>("delete_connection", { id });
+  }
+}
+
+export async function testConnection(uri: string): Promise<PingResult> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<PingResult>("test_connection", { uri });
+  }
+
+  return {
+    success: true,
+    latency_ms: 14,
+    server_version: "7.0.5",
+    error: null,
+  };
+}
+
+export async function getConnectionHierarchy(id: string): Promise<DatabaseInfo[]> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<DatabaseInfo[]>("get_connection_hierarchy", { id });
+  }
+
+  return [
+    {
+      name: "store_db",
+      size_on_disk: 15728640,
+      empty: false,
+      collections: [
+        { name: "orders", count: 15420, size_bytes: 8388608 },
+        { name: "customers", count: 8210, size_bytes: 4194304 },
+        { name: "products", count: 1450, size_bytes: 2097152 },
+      ],
+    },
+    {
+      name: "analytics",
+      size_on_disk: 31457280,
+      empty: false,
+      collections: [
+        { name: "events", count: 245000, size_bytes: 25165824 },
+        { name: "pageviews", count: 89000, size_bytes: 6291456 },
+      ],
+    },
+  ];
+}
+
+// ==========================================
+// Document Explorer APIs
+// ==========================================
+
+export async function executeQuery(params: QueryParams): Promise<QueryResult> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<QueryResult>("execute_query", { params });
+  }
+
+  // Sample documents for browser preview
+  const sampleDocs = [
+    {
+      _id: "6631a0e19f1b2c001a123456",
+      customer: "Nguyen Van A",
+      email: "vana@example.com",
+      status: "shipped",
+      total: 120.5,
+      items: ["item_01", "item_02"],
+      createdAt: "2026-04-12T10:30:00.000Z",
+    },
+    {
+      _id: "6631a0e19f1b2c001a123457",
+      customer: "Tran Thi B",
+      email: "thib@example.com",
+      status: "pending",
+      total: 85.0,
+      items: ["item_05"],
+      createdAt: "2026-04-12T11:15:00.000Z",
+    },
+    {
+      _id: "6631a0e19f1b2c001a123458",
+      customer: "Le Van C",
+      email: "vanc@example.com",
+      status: "shipped",
+      total: 340.2,
+      items: ["item_08", "item_09", "item_12"],
+      createdAt: "2026-04-12T14:45:00.000Z",
+    },
+  ];
+
+  return {
+    documents: sampleDocs,
+    total_count: sampleDocs.length,
+    page: 1,
+    page_size: params.limit,
+    elapsed_ms: 18,
+  };
+}
+
+export async function insertDocument(
+  connectionId: string,
+  database: string,
+  collection: string,
+  documentJson: string
+): Promise<string> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<string>("insert_document", {
+      connectionId,
+      database,
+      collection,
+      documentJson,
+    });
+  }
+
+  return `doc-${Date.now()}`;
+}
+
+export async function updateDocument(
+  connectionId: string,
+  database: string,
+  collection: string,
+  id: string,
+  patchJson: string
+): Promise<void> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke<void>("update_document", {
+      connectionId,
+      database,
+      collection,
+      id,
+      patchJson,
+    });
+  }
+}
+
+export async function deleteDocument(
+  connectionId: string,
+  database: string,
+  collection: string,
+  id: string
+): Promise<void> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke<void>("delete_document", {
+      connectionId,
+      database,
+      collection,
+      id,
+    });
+  }
+}
+
+// ==========================================
+// Backup & Restore APIs
+// ==========================================
+
+export async function runBackup(config: BackupConfig): Promise<JobSummary> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<JobSummary>("run_backup", { config });
+  }
+
+  return {
+    success: true,
+    records_processed: 15420,
+    bytes_transferred: 8388608,
+    elapsed_ms: 850,
+    output_path: config.output_path,
+    message: "Backup completed successfully (Simulated).",
+  };
+}
+
+export async function runRestore(config: RestoreConfig): Promise<JobSummary> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<JobSummary>("run_restore", { config });
+  }
+
+  return {
+    success: true,
+    records_processed: 15420,
+    bytes_transferred: 8388608,
+    elapsed_ms: 1100,
+    output_path: config.input_path,
+    message: "Restore completed successfully (Simulated).",
+  };
+}
+
+export async function inspectArchive(archivePath: string): Promise<ArchiveMetadata> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<ArchiveMetadata>("inspect_archive", { archivePath });
+  }
+
+  return {
+    path: archivePath,
+    size_bytes: 4194304,
+    is_valid: true,
+    detected_database: "store_db",
+  };
+}
+
+// ==========================================
+// Export & Import APIs
+// ==========================================
+
+export async function runExport(config: ExportConfig): Promise<JobSummary> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<JobSummary>("run_export", { config });
+  }
+
+  return {
+    success: true,
+    records_processed: 8210,
+    bytes_transferred: 1048576,
+    elapsed_ms: 450,
+    output_path: config.output_path,
+    message: `Exported 8,210 records as ${config.format.toUpperCase()} (Simulated).`,
+  };
+}
+
+export async function runImport(config: ImportConfig): Promise<JobSummary> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<JobSummary>("run_import", { config });
+  }
+
+  return {
+    success: true,
+    records_processed: 5000,
+    bytes_transferred: 624288,
+    elapsed_ms: 600,
+    output_path: config.input_path,
+    message: `Imported 5,000 records using mode ${config.conflict_mode} (Simulated).`,
+  };
+}
+
+export async function previewImportFile(inputPath: string, format: string): Promise<ImportPreview> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<ImportPreview>("preview_import_file", { inputPath, format });
+  }
+
+  return {
+    format: "json",
+    total_preview_rows: 3,
+    headers: ["_id", "name", "email", "age", "status"],
+    preview_records: [
+      { _id: "1", name: "Alice", email: "alice@test.com", age: 28, status: "active" },
+      { _id: "2", name: "Bob", email: "bob@test.com", age: 34, status: "inactive" },
+      { _id: "3", name: "Charlie", email: "charlie@test.com", age: 22, status: "active" },
+    ],
+  };
 }

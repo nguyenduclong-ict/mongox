@@ -9,7 +9,7 @@ Provide a wizard-driven workflow for importing and exporting MongoDB data across
 Developers and data teams routinely migrate data between environments, generate test fixtures, and export datasets for reporting. Exporting raw production data risks exposing Personally Identifiable Information (PII). Importing external datasets requires manual verification of schema alignments and duplicate resolution policies. The Export and Import Wizard addresses both needs with an intuitive interface.
 
 ### Status
-Ready for Implementation
+Implemented
 
 ## 2. Scope
 
