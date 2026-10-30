@@ -1,9 +1,21 @@
+use std::ffi::OsStr;
 use std::path::Path;
 use std::time::Instant;
 
 use serde_json::Value;
 
-use crate::models::{QueryParams, QueryResult};
+use crate::models::{CreateIndexRequest, DropIndexRequest, IndexInfo, QueryParams, QueryResult};
+
+pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+pub fn create_hidden_command<S: AsRef<OsStr>>(program: S) -> tokio::process::Command {
+    let mut cmd = tokio::process::Command::new(program);
+    #[cfg(windows)]
+    {
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
 
 pub struct ProcessRunner;
 
@@ -87,7 +99,7 @@ impl ProcessRunner {
         if let Some(path) = mongosh_path {
             if path.is_file() {
                 let script = Self::build_query_script(params);
-                let output = tokio::process::Command::new(path)
+                let output = create_hidden_command(path)
                     .arg(uri)
                     .arg("--quiet")
                     .arg("--eval")
@@ -182,7 +194,7 @@ impl ProcessRunner {
                     database, collection, parsed
                 );
 
-                let output = tokio::process::Command::new(path)
+                let output = create_hidden_command(path)
                     .arg(uri)
                     .arg("--quiet")
                     .arg("--eval")
@@ -247,7 +259,7 @@ impl ProcessRunner {
                     database, collection, id, id, parsed
                 );
 
-                let output = tokio::process::Command::new(path)
+                let output = create_hidden_command(path)
                     .arg(uri)
                     .arg("--quiet")
                     .arg("--eval")
@@ -301,7 +313,7 @@ impl ProcessRunner {
                     database, collection, id, id
                 );
 
-                let output = tokio::process::Command::new(path)
+                let output = create_hidden_command(path)
                     .arg(uri)
                     .arg("--quiet")
                     .arg("--eval")
@@ -323,6 +335,226 @@ impl ProcessRunner {
         }
 
         Ok(1)
+    }
+
+    /// List collection indexes with key directions, options, and memory sizes
+    pub async fn list_indexes(
+        uri: &str,
+        database: &str,
+        collection: &str,
+        mongosh_path: Option<&Path>,
+    ) -> Result<Vec<IndexInfo>, String> {
+        if let Some(path) = mongosh_path {
+            if path.is_file() {
+                let script = format!(
+                    r#"
+                    try {{
+                        const targetDb = db.getSiblingDB({:?});
+                        const coll = targetDb.getCollection({:?});
+                        const indexes = coll.getIndexes();
+                        let indexSizes = {{}};
+                        try {{
+                            const stats = coll.stats();
+                            indexSizes = stats.indexSizes || {{}};
+                        }} catch(e) {{}}
+
+                        const result = indexes.map(idx => {{
+                            const keyObj = idx.key || {{}};
+                            const keys = Object.entries(keyObj).map(([k, v]) => [k, typeof v === 'number' ? v : 1]);
+                            return {{
+                                name: idx.name || '',
+                                keys: keys,
+                                unique: !!idx.unique,
+                                sparse: !!idx.sparse,
+                                size_bytes: indexSizes[idx.name] || 0
+                            }};
+                        }});
+                        print("MONGOINDEX_RESULT:" + JSON.stringify(result));
+                    }} catch(e) {{
+                        print("MONGOINDEX_RESULT:ERROR:" + e.message);
+                    }}
+                    "#,
+                    database, collection
+                );
+
+                let output = create_hidden_command(path)
+                    .arg(uri)
+                    .arg("--quiet")
+                    .arg("--eval")
+                    .arg(&script)
+                    .output()
+                    .await
+                    .map_err(|e| format!("Failed to spawn mongosh: {}", e))?;
+
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    if let Some(json_content) = line.strip_prefix("MONGOINDEX_RESULT:") {
+                        if let Some(err_msg) = json_content.strip_prefix("ERROR:") {
+                            return Err(err_msg.to_string());
+                        }
+                        if let Ok(res) = serde_json::from_str::<Vec<IndexInfo>>(json_content) {
+                            return Ok(res);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Mock / Offline fallback
+        Ok(vec![
+            IndexInfo {
+                name: "_id_".to_string(),
+                keys: vec![("_id".to_string(), 1)],
+                unique: true,
+                sparse: false,
+                size_bytes: 36864,
+            },
+            IndexInfo {
+                name: "email_1".to_string(),
+                keys: vec![("email".to_string(), 1)],
+                unique: true,
+                sparse: false,
+                size_bytes: 20480,
+            },
+            IndexInfo {
+                name: "status_1_createdAt_-1".to_string(),
+                keys: vec![("status".to_string(), 1), ("createdAt".to_string(), -1)],
+                unique: false,
+                sparse: false,
+                size_bytes: 16384,
+            },
+        ])
+    }
+
+    /// Create index on collection
+    pub async fn create_index(
+        uri: &str,
+        req: &CreateIndexRequest,
+        mongosh_path: Option<&Path>,
+    ) -> Result<String, String> {
+        if req.keys.is_empty() {
+            return Err("At least one key is required to create an index".to_string());
+        }
+
+        if let Some(path) = mongosh_path {
+            if path.is_file() {
+                let mut keys_obj = serde_json::Map::new();
+                for (k, v) in &req.keys {
+                    keys_obj.insert(k.clone(), serde_json::json!(v));
+                }
+                let keys_json =
+                    serde_json::to_string(&keys_obj).unwrap_or_else(|_| "{}".to_string());
+
+                let mut options_obj = serde_json::Map::new();
+                if let Some(ref name) = req.name {
+                    if !name.trim().is_empty() {
+                        options_obj.insert("name".to_string(), serde_json::json!(name));
+                    }
+                }
+                if req.unique {
+                    options_obj.insert("unique".to_string(), serde_json::json!(true));
+                }
+                if req.sparse {
+                    options_obj.insert("sparse".to_string(), serde_json::json!(true));
+                }
+                let options_json =
+                    serde_json::to_string(&options_obj).unwrap_or_else(|_| "{}".to_string());
+
+                let script = format!(
+                    r#"
+                    try {{
+                        const targetDb = db.getSiblingDB({:?});
+                        const coll = targetDb.getCollection({:?});
+                        const name = coll.createIndex({}, {});
+                        print("MONGOCREATEINDEX_RESULT:" + JSON.stringify({{ name: name }}));
+                    }} catch(e) {{
+                        print("MONGOCREATEINDEX_RESULT:ERROR:" + e.message);
+                    }}
+                    "#,
+                    req.database, req.collection, keys_json, options_json
+                );
+
+                let output = create_hidden_command(path)
+                    .arg(uri)
+                    .arg("--quiet")
+                    .arg("--eval")
+                    .arg(&script)
+                    .output()
+                    .await
+                    .map_err(|e| format!("Failed to spawn mongosh: {}", e))?;
+
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    if let Some(json_content) = line.strip_prefix("MONGOCREATEINDEX_RESULT:") {
+                        if let Some(err_msg) = json_content.strip_prefix("ERROR:") {
+                            return Err(err_msg.to_string());
+                        }
+                        if let Ok(res) = serde_json::from_str::<serde_json::Value>(json_content) {
+                            return Ok(res["name"].as_str().unwrap_or("index_created").to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        let generated_name = req.name.clone().unwrap_or_else(|| {
+            req.keys
+                .iter()
+                .map(|(k, v)| format!("{}_{}", k, v))
+                .collect::<Vec<_>>()
+                .join("_")
+        });
+        Ok(generated_name)
+    }
+
+    /// Drop index from collection
+    pub async fn drop_index(
+        uri: &str,
+        req: &DropIndexRequest,
+        mongosh_path: Option<&Path>,
+    ) -> Result<String, String> {
+        if req.index_name == "_id_" {
+            return Err("Cannot drop default _id_ index".to_string());
+        }
+
+        if let Some(path) = mongosh_path {
+            if path.is_file() {
+                let script = format!(
+                    r#"
+                    try {{
+                        const targetDb = db.getSiblingDB({:?});
+                        const coll = targetDb.getCollection({:?});
+                        const res = coll.dropIndex({:?});
+                        print("MONGODROPINDEX_RESULT:" + JSON.stringify(res));
+                    }} catch(e) {{
+                        print("MONGODROPINDEX_RESULT:ERROR:" + e.message);
+                    }}
+                    "#,
+                    req.database, req.collection, req.index_name
+                );
+
+                let output = create_hidden_command(path)
+                    .arg(uri)
+                    .arg("--quiet")
+                    .arg("--eval")
+                    .arg(&script)
+                    .output()
+                    .await
+                    .map_err(|e| format!("Failed to spawn mongosh: {}", e))?;
+
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    if let Some(json_content) = line.strip_prefix("MONGODROPINDEX_RESULT:") {
+                        if let Some(err_msg) = json_content.strip_prefix("ERROR:") {
+                            return Err(err_msg.to_string());
+                        }
+                        return Ok(req.index_name.clone());
+                    }
+                }
+            }
+        }
+
+        Ok(req.index_name.clone())
     }
 }
 

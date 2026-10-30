@@ -203,6 +203,46 @@ pub struct ArchiveMetadata {
     pub detected_database: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackupFileInfo {
+    pub filename: String,
+    pub path: String,
+    pub size_bytes: u64,
+    pub created_at: String,
+}
+
+// ==========================================
+// Index Management Models
+// ==========================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexInfo {
+    pub name: String,
+    pub keys: Vec<(String, i32)>,
+    pub unique: bool,
+    pub sparse: bool,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateIndexRequest {
+    pub connection_id: String,
+    pub database: String,
+    pub collection: String,
+    pub keys: Vec<(String, i32)>,
+    pub name: Option<String>,
+    pub unique: bool,
+    pub sparse: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DropIndexRequest {
+    pub connection_id: String,
+    pub database: String,
+    pub collection: String,
+    pub index_name: String,
+}
+
 // ==========================================
 // Export & Import Models
 // ==========================================

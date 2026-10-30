@@ -1,46 +1,67 @@
 import React, { useState } from "react";
 import {
-  Database,
-  HardDriveDownload,
-  Share2,
-  Terminal,
-  Cpu,
-  Layers,
-  ShieldAlert,
-  ChevronRight,
-  ChevronDown,
+  Server,
   Folder,
   FileText,
+  ChevronRight,
+  ChevronDown,
+  Plus,
+  Settings,
+  HardDriveDownload,
+  Share2,
+  Upload,
+  Search,
+  ExternalLink,
 } from "lucide-react";
-import { DatabaseInfo } from "../types";
+import { ConnectionProfile, DatabaseInfo, Environment } from "../types";
+import { openBackupDirectory } from "../services/tauri";
 
 interface SidebarProps {
-  currentTab: string;
-  onSelectTab: (tab: string) => void;
-  toolCounts: {
-    shellReady: boolean;
-    toolsReady: boolean;
-  };
-  hierarchy?: DatabaseInfo[];
-  selectedDb?: string | null;
-  selectedCollection?: string | null;
-  onSelectCollection?: (db: string, coll: string) => void;
+  connections: ConnectionProfile[];
+  activeConnection: ConnectionProfile | null;
+  onSelectConnection: (conn: ConnectionProfile) => void;
+  onOpenNewConnection: () => void;
+  onOpenSettings: () => void;
+  hierarchy: DatabaseInfo[];
+  selectedDb: string | null;
+  selectedCollection: string | null;
+  onSelectCollection: (db: string, col: string) => void;
+  onOpenBackupModal: (db: string, col: string) => void;
+  onOpenRestoreModal: (db: string) => void;
+  onOpenExportModal: (db: string, col: string) => void;
+  onOpenImportModal: (db: string, col: string) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
-  currentTab,
-  onSelectTab,
-  toolCounts,
-  hierarchy = [],
+  connections,
+  activeConnection,
+  onSelectConnection,
+  onOpenNewConnection,
+  onOpenSettings,
+  hierarchy,
   selectedDb,
   selectedCollection,
   onSelectCollection,
+  onOpenBackupModal,
+  onOpenExportModal,
+  onOpenImportModal,
 }) => {
+  const [filterText, setFilterText] = useState<string>("");
+  const [expandedConns, setExpandedConns] = useState<Record<string, boolean>>({
+    "local-1": true,
+  });
   const [expandedDbs, setExpandedDbs] = useState<Record<string, boolean>>({
     store_db: true,
-    admin: false,
     analytics: true,
   });
+
+  const toggleConn = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedConns((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
 
   const toggleDb = (dbName: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -50,193 +71,281 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }));
   };
 
-  const navItems = [
-    {
-      id: "engine",
-      label: "Engine & Tools",
-      icon: Cpu,
-      badge: toolCounts.shellReady && toolCounts.toolsReady ? "Ready" : "JIT",
-      badgeColor: toolCounts.shellReady && toolCounts.toolsReady ? "text-mongo" : "text-amber-400",
-    },
-    {
-      id: "connections",
-      label: "Connections",
-      icon: Database,
-      badge: "Config",
-      badgeColor: "text-gray-400",
-    },
-    {
-      id: "documents",
-      label: "Document Explorer",
-      icon: Layers,
-      badge: toolCounts.shellReady ? "Ready" : "Lazy",
-      badgeColor: toolCounts.shellReady ? "text-mongo" : "text-gray-500",
-    },
-    {
-      id: "backup",
-      label: "Backup & Restore",
-      icon: HardDriveDownload,
-      badge: toolCounts.toolsReady ? "Ready" : "Lazy",
-      badgeColor: toolCounts.toolsReady ? "text-mongo" : "text-gray-500",
-    },
-    {
-      id: "export",
-      label: "Export & Import",
-      icon: Share2,
-      badge: toolCounts.toolsReady ? "Ready" : "Lazy",
-      badgeColor: toolCounts.toolsReady ? "text-mongo" : "text-gray-500",
-    },
-    {
-      id: "console",
-      label: "Mongosh Console",
-      icon: Terminal,
-      badge: toolCounts.shellReady ? "Ready" : "Lazy",
-      badgeColor: toolCounts.shellReady ? "text-mongo" : "text-gray-500",
-    },
-  ];
+  const getEnvBadge = (env: Environment) => {
+    switch (env) {
+      case "production":
+        return {
+          bg: "bg-guard/20 border-guard/40 text-red-300",
+          label: "PROD",
+        };
+      case "staging":
+        return {
+          bg: "bg-purple-500/20 border-purple-500/40 text-purple-300",
+          label: "STAG",
+        };
+      case "development":
+        return {
+          bg: "bg-blue-500/20 border-blue-500/40 text-blue-300",
+          label: "DEV",
+        };
+      default:
+        return {
+          bg: "bg-mongo/20 border-mongo/40 text-emerald-300",
+          label: "LOCAL",
+        };
+    }
+  };
+
+  // Filter hierarchy databases and collections based on filterText
+  const filteredHierarchy = hierarchy
+    .map((db) => {
+      const dbMatches = db.name.toLowerCase().includes(filterText.toLowerCase());
+      const filteredCols = db.collections.filter((col) =>
+        col.name.toLowerCase().includes(filterText.toLowerCase())
+      );
+      if (dbMatches || filteredCols.length > 0) {
+        return {
+          ...db,
+          collections: dbMatches ? db.collections : filteredCols,
+        };
+      }
+      return null;
+    })
+    .filter(Boolean) as DatabaseInfo[];
 
   return (
-    <aside className="w-60 bg-panel border-r border-hairline flex flex-col shrink-0 select-none overflow-hidden">
-      {/* Workspace Navigation */}
-      <div className="p-3 pb-1 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-        Workspace Navigation
+    <aside className="w-64 bg-panel border-r border-hairline flex flex-col shrink-0 select-none overflow-hidden font-sans">
+      {/* Object Explorer Header */}
+      <div className="h-11 px-3 border-b border-hairline flex items-center justify-between shrink-0 bg-panel">
+        <span className="text-xs font-semibold text-gray-300 uppercase tracking-wider flex items-center gap-1.5 font-mono">
+          <span>Object Explorer</span>
+        </span>
+
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onOpenNewConnection}
+            className="p-1 rounded hover:bg-surface text-gray-400 hover:text-white transition-colors"
+            title="Add New Connection Profile"
+          >
+            <Plus className="w-4 h-4 text-mongo" />
+          </button>
+          <button
+            onClick={onOpenSettings}
+            className="p-1 rounded hover:bg-surface text-gray-400 hover:text-white transition-colors"
+            title="Application Settings"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
-      <nav className="px-2 space-y-0.5">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = currentTab === item.id;
+      {/* Filter Input */}
+      <div className="p-2 border-b border-hairline bg-surface/30">
+        <div className="relative flex items-center">
+          <Search className="w-3 h-3 text-gray-500 absolute left-2.5 pointer-events-none" />
+          <input
+            type="text"
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            placeholder="Filter databases & collections..."
+            className="w-full pl-7 pr-2 py-1 bg-surface border border-hairline rounded text-[11px] font-mono text-gray-200 placeholder-gray-500 focus:outline-none focus:border-mongo transition-colors"
+          />
+        </div>
+      </div>
+
+      {/* Multi-Connection & Hierarchy Tree */}
+      <div className="flex-1 overflow-y-auto p-2 space-y-1.5 min-h-0">
+        {connections.map((conn) => {
+          const isActive = activeConnection?.id === conn.id;
+          const isExpanded = expandedConns[conn.id] ?? (isActive || connections.length === 1);
+          const badge = getEnvBadge(conn.environment);
 
           return (
-            <button
-              key={item.id}
-              onClick={() => onSelectTab(item.id)}
-              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs font-medium transition-all duration-150 ${
-                isActive
-                  ? "bg-surface text-white border border-hairline/80 shadow-sm"
-                  : "text-gray-400 hover:text-gray-200 hover:bg-surface/50 border border-transparent"
-              }`}
-            >
-              <div className="flex items-center gap-2.5 truncate">
-                <Icon
-                  className={`w-4 h-4 shrink-0 ${
-                    isActive ? "text-mongo" : "text-gray-400"
-                  }`}
-                />
-                <span className="truncate">{item.label}</span>
-              </div>
-              <span
-                className={`text-[10px] font-mono px-1.5 py-0.2 rounded bg-canvas border border-hairline/60 ${item.badgeColor}`}
+            <div key={conn.id} className="space-y-0.5">
+              {/* Connection Root Node */}
+              <div
+                onClick={() => onSelectConnection(conn)}
+                className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer transition-colors group ${
+                  isActive
+                    ? "bg-surface border border-hairline text-white shadow-sm"
+                    : "hover:bg-surface/50 text-gray-400 hover:text-gray-200"
+                }`}
               >
-                {item.badge}
-              </span>
-            </button>
+                <div className="flex items-center gap-1.5 truncate">
+                  <div
+                    onClick={(e) => toggleConn(conn.id, e)}
+                    className="p-0.5 hover:text-white"
+                  >
+                    {isExpanded ? (
+                      <ChevronDown className="w-3 h-3 text-gray-500 shrink-0" />
+                    ) : (
+                      <ChevronRight className="w-3 h-3 text-gray-500 shrink-0" />
+                    )}
+                  </div>
+                  <Server
+                    className={`w-3.5 h-3.5 shrink-0 ${
+                      isActive ? "text-mongo" : "text-gray-500"
+                    }`}
+                  />
+                  <span className="truncate text-xs font-semibold font-mono">
+                    {conn.name}
+                  </span>
+                </div>
+
+                <span
+                  className={`text-[9px] font-mono px-1 py-0.2 rounded border font-semibold ${badge.bg}`}
+                >
+                  {badge.label}
+                </span>
+              </div>
+
+              {/* Expanded Databases under Active Connection */}
+              {isExpanded && isActive && (
+                <div className="pl-3 border-l border-hairline/60 ml-2 space-y-1 pt-0.5">
+                  {filteredHierarchy.map((db) => {
+                    const isDbExpanded = expandedDbs[db.name] ?? false;
+                    const isDbActive = selectedDb === db.name;
+
+                    return (
+                      <div key={db.name} className="space-y-0.5">
+                        {/* Database Node */}
+                        <div
+                          onClick={(e) => toggleDb(db.name, e)}
+                          className={`w-full flex items-center justify-between px-2 py-1 rounded text-xs cursor-pointer transition-colors group/db ${
+                            isDbActive
+                              ? "bg-surface/60 text-white"
+                              : "text-gray-400 hover:text-gray-200 hover:bg-surface/30"
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5 truncate">
+                            {isDbExpanded ? (
+                              <ChevronDown className="w-3 h-3 text-gray-500 shrink-0" />
+                            ) : (
+                              <ChevronRight className="w-3 h-3 text-gray-500 shrink-0" />
+                            )}
+                            <Folder className="w-3.5 h-3.5 text-mongo shrink-0" />
+                            <span className="truncate font-mono font-medium text-[11px]">
+                              {db.name}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-gray-500 font-mono">
+                              {db.collections.length}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Collections List */}
+                        {isDbExpanded && (
+                          <div className="pl-4 space-y-0.5 border-l border-hairline/40 ml-2">
+                            {db.collections.length === 0 ? (
+                              <div className="text-[10px] text-gray-600 pl-2 py-0.5 italic font-mono">
+                                (no collections)
+                              </div>
+                            ) : (
+                              db.collections.map((col) => {
+                                const isColActive =
+                                  selectedDb === db.name &&
+                                  selectedCollection === col.name;
+
+                                return (
+                                  <div
+                                    key={col.name}
+                                    onClick={() => onSelectCollection(db.name, col.name)}
+                                    className={`w-full flex items-center justify-between pl-2 pr-1.5 py-1 rounded text-[11px] font-mono cursor-pointer transition-colors group/col ${
+                                      isColActive
+                                        ? "bg-mongo/10 text-mongo border border-mongo/30 font-semibold"
+                                        : "text-gray-400 hover:text-gray-200 hover:bg-surface/40"
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-1.5 truncate">
+                                      <FileText className="w-3 h-3 text-gray-500 shrink-0" />
+                                      <span className="truncate">{col.name}</span>
+                                    </div>
+
+                                    {/* Action icons on hover */}
+                                    <div className="flex items-center gap-1">
+                                      <div className="hidden group-hover/col:flex items-center gap-0.5">
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            onOpenBackupModal(db.name, col.name);
+                                          }}
+                                          className="p-0.5 rounded hover:bg-surface text-gray-400 hover:text-mongo"
+                                          title="Backup collection"
+                                        >
+                                          <HardDriveDownload className="w-2.5 h-2.5" />
+                                        </button>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            onOpenExportModal(db.name, col.name);
+                                          }}
+                                          className="p-0.5 rounded hover:bg-surface text-gray-400 hover:text-emerald-400"
+                                          title="Export collection"
+                                        >
+                                          <Share2 className="w-2.5 h-2.5" />
+                                        </button>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            onOpenImportModal(db.name, col.name);
+                                          }}
+                                          className="p-0.5 rounded hover:bg-surface text-gray-400 hover:text-sky-400"
+                                          title="Import data into collection"
+                                        >
+                                          <Upload className="w-2.5 h-2.5" />
+                                        </button>
+                                      </div>
+
+                                      <span className="text-[9px] text-gray-500 bg-canvas px-1 rounded">
+                                        {col.count > 1000
+                                          ? `${(col.count / 1000).toFixed(0)}k`
+                                          : col.count}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           );
         })}
-      </nav>
-
-      {/* Database & Collection Hierarchy Tree */}
-      <div className="flex-1 flex flex-col min-h-0 border-t border-hairline mt-3">
-        <div className="p-3 pb-1 flex items-center justify-between text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-          <span>Databases & Collections</span>
-          <span className="font-mono text-gray-400 lowercase">{hierarchy.length} dbs</span>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-2 space-y-1">
-          {hierarchy.length === 0 ? (
-            <div className="p-3 text-[11px] text-gray-500 text-center font-mono">
-              No active database connection
-            </div>
-          ) : (
-            hierarchy.map((db) => {
-              const isExpanded = expandedDbs[db.name] ?? false;
-              const isDbActive = selectedDb === db.name;
-
-              return (
-                <div key={db.name} className="space-y-0.5">
-                  {/* Database Node */}
-                  <div
-                    onClick={(e) => toggleDb(db.name, e)}
-                    className={`w-full flex items-center justify-between px-2 py-1 rounded text-xs cursor-pointer transition-colors ${
-                      isDbActive
-                        ? "text-gray-200 bg-surface/40"
-                        : "text-gray-400 hover:text-gray-200 hover:bg-surface/20"
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5 truncate">
-                      {isExpanded ? (
-                        <ChevronDown className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-                      ) : (
-                        <ChevronRight className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-                      )}
-                      <Folder className="w-3.5 h-3.5 text-mongo shrink-0" />
-                      <span className="truncate font-medium">{db.name}</span>
-                    </div>
-                    <span className="text-[10px] text-gray-500 font-mono">
-                      {db.collections.length}
-                    </span>
-                  </div>
-
-                  {/* Collections List */}
-                  {isExpanded && (
-                    <div className="pl-4 space-y-0.5">
-                      {db.collections.length === 0 ? (
-                        <div className="text-[10px] text-gray-600 pl-3 py-0.5 italic font-mono">
-                          (empty)
-                        </div>
-                      ) : (
-                        db.collections.map((col) => {
-                          const isColActive =
-                            selectedDb === db.name && selectedCollection === col.name;
-
-                          return (
-                            <button
-                              key={col.name}
-                              onClick={() => {
-                                if (onSelectCollection) {
-                                  onSelectCollection(db.name, col.name);
-                                }
-                                onSelectTab("documents");
-                              }}
-                              className={`w-full flex items-center justify-between pl-2 pr-1.5 py-1 rounded text-[11px] font-mono transition-colors ${
-                                isColActive
-                                  ? "bg-mongo/10 text-mongo border border-mongo/20 font-semibold"
-                                  : "text-gray-400 hover:text-gray-200 hover:bg-surface/30 border border-transparent"
-                              }`}
-                            >
-                              <div className="flex items-center gap-1.5 truncate">
-                                <FileText className="w-3 h-3 text-gray-500 shrink-0" />
-                                <span className="truncate">{col.name}</span>
-                              </div>
-                              <span className="text-[9px] text-gray-500 bg-canvas px-1 rounded">
-                                {col.count > 1000
-                                  ? `${(col.count / 1000).toFixed(0)}k`
-                                  : col.count}
-                              </span>
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
       </div>
 
-      {/* Production Guard Banner */}
-      <div className="p-3 border-t border-hairline">
-        <div className="bg-surface/60 border border-hairline rounded-lg p-2.5">
-          <div className="flex items-center gap-1.5 text-xs text-gray-300 font-medium">
-            <ShieldAlert className="w-3.5 h-3.5 text-guard" />
-            <span>Production Guard</span>
+      {/* Sidebar Footer */}
+      <div className="p-2 border-t border-hairline bg-panel space-y-1 shrink-0">
+        <button
+          onClick={() => openBackupDirectory()}
+          className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-md hover:bg-surface text-xs font-mono text-gray-400 hover:text-gray-200 transition-colors"
+          title="Open Backup Directory in Windows Explorer"
+        >
+          <div className="flex items-center gap-2">
+            <ExternalLink className="w-3.5 h-3.5 text-mongo" />
+            <span>Open Backups</span>
           </div>
-          <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">
-            Multi-step typed confirmation active on critical environments.
-          </p>
-        </div>
+          <span className="text-[10px] text-gray-600">Folder</span>
+        </button>
+
+        <button
+          onClick={onOpenSettings}
+          className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-md hover:bg-surface text-xs font-mono text-gray-400 hover:text-gray-200 transition-colors"
+          title="Application Settings"
+        >
+          <div className="flex items-center gap-2">
+            <Settings className="w-3.5 h-3.5 text-gray-400" />
+            <span>Settings</span>
+          </div>
+          <span className="text-[10px] text-gray-600">CLI & Hub</span>
+        </button>
       </div>
     </aside>
   );

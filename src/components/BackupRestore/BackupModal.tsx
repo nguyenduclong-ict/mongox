@@ -1,6 +1,14 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { BackupConfig } from "../../types";
-import { HardDriveDownload, X, AlertTriangle, Play, FolderArchive } from "lucide-react";
+import {
+  HardDriveDownload,
+  X,
+  AlertTriangle,
+  Play,
+  FolderArchive,
+  ExternalLink,
+} from "lucide-react";
+import { getDefaultBackupDir, openBackupDirectory } from "../../services/tauri";
 
 interface BackupModalProps {
   isOpen: boolean;
@@ -21,14 +29,29 @@ export const BackupModal: React.FC<BackupModalProps> = ({
 }) => {
   const [database, setDatabase] = useState<string>(defaultDb || "store_db");
   const [selectedCols, setSelectedCols] = useState<string[]>([]);
-  const [outputPath, setOutputPath] = useState<string>(
-    `backup_${defaultDb || "store_db"}_${new Date().toISOString().replace(/[:.]/g, "-")}.dump.gz`
-  );
+  const [outputPath, setOutputPath] = useState<string>("");
+  const [defaultDir, setDefaultDir] = useState<string>("");
   const [gzip, setGzip] = useState<boolean>(true);
   const [archive, setArchive] = useState<boolean>(true);
   const [queryFilter, setQueryFilter] = useState<string>("");
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setDatabase(defaultDb || "store_db");
+      getDefaultBackupDir().then((dir) => {
+        setDefaultDir(dir);
+        const timestamp = new Date()
+          .toISOString()
+          .replace(/[:.]/g, "-")
+          .substring(0, 19);
+        const separator = dir.includes("/") ? "/" : "\\";
+        const filename = `backup_${defaultDb || "store_db"}_${timestamp}.dump.gz`;
+        setOutputPath(`${dir}${separator}${filename}`);
+      });
+    }
+  }, [isOpen, defaultDb]);
 
   if (!isOpen) return null;
 
@@ -74,7 +97,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                 Create Database Backup (mongodump)
               </h2>
               <p className="text-[11px] text-gray-400">
-                Generate compressed archive using official database tools
+                Generate compressed archive stored in managed disk location
               </p>
             </div>
           </div>
@@ -106,13 +129,15 @@ export const BackupModal: React.FC<BackupModalProps> = ({
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-medium text-gray-300">
-                  Target Collections (Leave unselected for all)
+                  Target Collections (Leave empty to dump entire database)
                 </label>
                 <span className="text-[10px] text-gray-500 font-mono">
-                  {selectedCols.length > 0 ? `${selectedCols.length} selected` : "All collections"}
+                  {selectedCols.length > 0
+                    ? `${selectedCols.length} selected`
+                    : "All collections"}
                 </span>
               </div>
-              <div className="max-h-28 overflow-y-auto p-2 bg-surface/50 border border-hairline rounded-md space-y-1">
+              <div className="max-h-24 overflow-y-auto p-2 bg-surface/50 border border-hairline rounded-md space-y-1">
                 {availableCollections.map((col) => {
                   const isChecked = selectedCols.includes(col);
                   return (
@@ -134,11 +159,22 @@ export const BackupModal: React.FC<BackupModalProps> = ({
             </div>
           )}
 
-          {/* Destination Archive Path */}
+          {/* Destination Archive Path & Explorer button */}
           <div>
-            <label className="block text-xs font-medium text-gray-300 mb-1">
-              Output File Path (.dump.gz)
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-medium text-gray-300">
+                Destination Archive Path (.dump.gz)
+              </label>
+              <button
+                type="button"
+                onClick={() => openBackupDirectory()}
+                className="text-[11px] text-mongo hover:text-emerald-400 font-mono flex items-center gap-1 transition-colors"
+                title="Open default backup directory in File Explorer"
+              >
+                <ExternalLink className="w-3 h-3" />
+                <span>Open Folder</span>
+              </button>
+            </div>
             <div className="relative">
               <FolderArchive className="w-3.5 h-3.5 text-gray-500 absolute left-2.5 top-2.5 pointer-events-none" />
               <input
@@ -149,6 +185,11 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                 className="w-full pl-8 pr-3 py-1.5 bg-surface border border-hairline rounded-md text-xs font-mono text-white focus:outline-none focus:border-mongo"
               />
             </div>
+            {defaultDir && (
+              <p className="text-[10px] text-gray-500 mt-1 truncate">
+                Default location: {defaultDir}
+              </p>
+            )}
           </div>
 
           {/* Optional Query Filter */}

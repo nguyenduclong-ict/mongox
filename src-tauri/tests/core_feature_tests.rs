@@ -6,8 +6,9 @@ use mongox_lib::backup_service::BackupService;
 use mongox_lib::connection::ConnectionManager;
 use mongox_lib::export_import::ExportImportService;
 use mongox_lib::models::{
-    BackupConfig, ConflictMode, ConnectionProfile, Environment, ExportConfig, ExportFormat,
-    ImportConfig, MaskingRule, MaskingRuleType, QueryParams, RestoreConfig,
+    BackupConfig, ConflictMode, ConnectionProfile, CreateIndexRequest, DropIndexRequest,
+    Environment, ExportConfig, ExportFormat, ImportConfig, MaskingRule, MaskingRuleType,
+    QueryParams, RestoreConfig,
 };
 use mongox_lib::process_runner::ProcessRunner;
 
@@ -411,4 +412,79 @@ async fn test_update_document_immutability_and_crud() {
         .await
         .unwrap();
     assert!(!query_res.documents.is_empty());
+}
+
+#[tokio::test]
+async fn test_backup_directory_and_archive_listing() {
+    let backup_dir = BackupService::get_default_backup_dir();
+    assert!(backup_dir.is_dir());
+
+    let test_archive_path = backup_dir.join("test_integration_snap.dump.gz");
+    {
+        let mut f = File::create(&test_archive_path).unwrap();
+        writeln!(f, "fake_gzip_archive_content_for_test").unwrap();
+    }
+
+    let files = BackupService::list_backup_files();
+    let found = files
+        .iter()
+        .find(|f| f.filename == "test_integration_snap.dump.gz");
+    assert!(found.is_some());
+    let file_info = found.unwrap();
+    assert!(file_info.size_bytes > 0);
+    assert!(!file_info.created_at.is_empty());
+
+    // Clean up test archive
+    let _ = std::fs::remove_file(test_archive_path);
+}
+
+#[tokio::test]
+async fn test_index_management_lifecycle() {
+    // 1. List indexes
+    let indexes =
+        ProcessRunner::list_indexes("mongodb://localhost:27017", "store_db", "orders", None)
+            .await
+            .unwrap();
+    assert!(!indexes.is_empty());
+    assert!(indexes.iter().any(|idx| idx.name == "_id_"));
+
+    // 2. Create index
+    let create_req = CreateIndexRequest {
+        connection_id: "conn-1".to_string(),
+        database: "store_db".to_string(),
+        collection: "orders".to_string(),
+        keys: vec![("user_id".to_string(), 1), ("created_at".to_string(), -1)],
+        name: Some("user_id_1_created_at_-1".to_string()),
+        unique: false,
+        sparse: true,
+    };
+
+    let created_name = ProcessRunner::create_index("mongodb://localhost:27017", &create_req, None)
+        .await
+        .unwrap();
+    assert_eq!(created_name, "user_id_1_created_at_-1");
+
+    // 3. Drop index - safety check: dropping _id_ must fail
+    let drop_id_req = DropIndexRequest {
+        connection_id: "conn-1".to_string(),
+        database: "store_db".to_string(),
+        collection: "orders".to_string(),
+        index_name: "_id_".to_string(),
+    };
+    let drop_id_res =
+        ProcessRunner::drop_index("mongodb://localhost:27017", &drop_id_req, None).await;
+    assert!(drop_id_res.is_err());
+
+    // 4. Drop custom index - must succeed
+    let drop_custom_req = DropIndexRequest {
+        connection_id: "conn-1".to_string(),
+        database: "store_db".to_string(),
+        collection: "orders".to_string(),
+        index_name: "user_id_1_created_at_-1".to_string(),
+    };
+    let drop_custom_res =
+        ProcessRunner::drop_index("mongodb://localhost:27017", &drop_custom_req, None)
+            .await
+            .unwrap();
+    assert_eq!(drop_custom_res, "user_id_1_created_at_-1");
 }

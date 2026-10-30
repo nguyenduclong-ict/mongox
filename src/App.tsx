@@ -1,23 +1,63 @@
 import React, { useState } from "react";
 import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
-import { EngineDashboard } from "./components/EngineDashboard";
-import { ConnectionsView } from "./components/ConnectionsView";
+import { CollectionWorkspace } from "./components/CollectionWorkspace/CollectionWorkspace";
 import { ConnectionModal } from "./components/ConnectionModal";
-import { DocumentExplorer } from "./components/DocumentExplorer/DocumentExplorer";
-import { BackupRestoreView } from "./components/BackupRestore/BackupRestoreView";
-import { ExportImportView } from "./components/ExportImport/ExportImportView";
+import { SettingsModal } from "./components/SettingsModal";
+import { BackupModal } from "./components/BackupRestore/BackupModal";
+import { RestoreModal } from "./components/BackupRestore/RestoreModal";
+import { ExportModal } from "./components/ExportImport/ExportModal";
+import { ImportModal } from "./components/ExportImport/ImportModal";
 import { ProductionGuardModal } from "./components/ProductionGuardModal";
 import { ProvisioningModal } from "./components/ProvisioningModal";
 import { useProvisioning } from "./hooks/useProvisioning";
 import { useConnection } from "./hooks/useConnection";
-import { ConnectionProfile } from "./types";
-import { Terminal, Play, Sparkles } from "lucide-react";
+import {
+  BackupConfig,
+  ConnectionProfile,
+  ExportConfig,
+  ImportConfig,
+  RestoreConfig,
+} from "./types";
+import {
+  runBackup,
+  runRestore,
+  runExport,
+  runImport,
+  previewImportFile,
+  inspectArchive,
+} from "./services/tauri";
+import { Database, Plus, Sparkles, Layers } from "lucide-react";
 
 export const App: React.FC = () => {
-  const [currentTab, setCurrentTab] = useState<string>("connections");
+  // Modal States
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isConnModalOpen, setIsConnModalOpen] = useState<boolean>(false);
   const [editingConn, setEditingConn] = useState<ConnectionProfile | null>(null);
+
+  // Action Modals State
+  const [backupModal, setBackupModal] = useState<{
+    isOpen: boolean;
+    db: string;
+    col: string;
+  }>({ isOpen: false, db: "", col: "" });
+
+  const [restoreModal, setRestoreModal] = useState<{
+    isOpen: boolean;
+    db: string;
+  }>({ isOpen: false, db: "" });
+
+  const [exportModal, setExportModal] = useState<{
+    isOpen: boolean;
+    db: string;
+    col: string;
+  }>({ isOpen: false, db: "", col: "" });
+
+  const [importModal, setImportModal] = useState<{
+    isOpen: boolean;
+    db: string;
+    col: string;
+  }>({ isOpen: false, db: "", col: "" });
 
   // Production Guard State
   const [guardState, setGuardState] = useState<{
@@ -31,12 +71,6 @@ export const App: React.FC = () => {
     entityName: "",
     onConfirmed: async () => {},
   });
-
-  // Interactive Console input state
-  const [consoleInput, setConsoleInput] = useState<string>("db.getCollectionNames();");
-  const [consoleOutput, setConsoleOutput] = useState<string>(
-    '// Mongox Interactive Shell (mongosh)\n["orders", "customers", "products"]'
-  );
 
   const {
     tools,
@@ -60,23 +94,16 @@ export const App: React.FC = () => {
     setSelectedCollection,
     selectConnection,
     saveProfile,
-    removeProfile,
     testPing,
     reloadHierarchy,
   } = useConnection();
 
-  const shellReady = tools.some((t) => t.bundle === "shell" && t.is_available);
-  const toolsReady = tools.some((t) => t.bundle === "databasetools" && t.is_available);
   const activeCount = tools.filter((t) => t.is_available).length;
   const isProduction = activeConnection?.environment === "production";
 
+  // Modal Handlers
   const handleOpenNewConn = () => {
     setEditingConn(null);
-    setIsConnModalOpen(true);
-  };
-
-  const handleEditConn = (conn: ConnectionProfile) => {
-    setEditingConn(conn);
     setIsConnModalOpen(true);
   };
 
@@ -93,19 +120,51 @@ export const App: React.FC = () => {
     });
   };
 
-  const handleRunConsole = () => {
-    try {
-      setConsoleOutput(
-        `> ${consoleInput}\n// Evaluated in active cluster (${activeConnection?.name || "Localhost"})\n` +
-          JSON.stringify({ ok: 1, result: ["orders", "customers", "products"], executionTimeMs: 14 }, null, 2)
+  // Action Wizard Runners
+  const handleRunBackup = async (config: BackupConfig) => {
+    await runBackup(config);
+  };
+
+  const handleRunRestore = async (config: RestoreConfig) => {
+    const execute = async () => {
+      await runRestore(config);
+      reloadHierarchy();
+    };
+
+    if (config.drop_existing && isProduction) {
+      triggerProductionGuard(
+        "Drop & Restore Database",
+        config.database,
+        execute
       );
-    } catch (e) {
-      setConsoleOutput(`Error: ${e instanceof Error ? e.message : String(e)}`);
+    } else {
+      await execute();
     }
   };
 
-  // Extract available collections list for active database
-  const activeDbInfo = hierarchy.find((d) => d.name === selectedDb);
+  const handleRunExport = async (config: ExportConfig) => {
+    await runExport(config);
+  };
+
+  const handleRunImport = async (config: ImportConfig) => {
+    const execute = async () => {
+      await runImport(config);
+      reloadHierarchy();
+    };
+
+    if (isProduction) {
+      triggerProductionGuard(
+        "Bulk Data Ingestion",
+        `${config.database}.${config.collection}`,
+        execute
+      );
+    } else {
+      await execute();
+    }
+  };
+
+  // Available collections list for active database
+  const activeDbInfo = hierarchy.find((d) => d.name === (selectedDb || backupModal.db));
   const availableCollections = activeDbInfo
     ? activeDbInfo.collections.map((c) => c.name)
     : ["orders", "customers", "products"];
@@ -125,14 +184,17 @@ export const App: React.FC = () => {
         activeDatabase={selectedDb}
         activeCollection={selectedCollection}
         latencyMs={pingResult?.latency_ms}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
-      {/* Main Workspace: Sidebar + Content */}
+      {/* Main Layout: Object Explorer Sidebar + Collection Workspace */}
       <div className="flex-1 flex overflow-hidden">
         <Sidebar
-          currentTab={currentTab}
-          onSelectTab={setCurrentTab}
-          toolCounts={{ shellReady, toolsReady }}
+          connections={connections}
+          activeConnection={activeConnection}
+          onSelectConnection={selectConnection}
+          onOpenNewConnection={handleOpenNewConn}
+          onOpenSettings={() => setIsSettingsOpen(true)}
           hierarchy={hierarchy}
           selectedDb={selectedDb}
           selectedCollection={selectedCollection}
@@ -140,112 +202,111 @@ export const App: React.FC = () => {
             setSelectedDb(db);
             setSelectedCollection(col);
           }}
+          onOpenBackupModal={(db, col) =>
+            setBackupModal({ isOpen: true, db, col })
+          }
+          onOpenRestoreModal={(db) => setRestoreModal({ isOpen: true, db })}
+          onOpenExportModal={(db, col) =>
+            setExportModal({ isOpen: true, db, col })
+          }
+          onOpenImportModal={(db, col) =>
+            setImportModal({ isOpen: true, db, col })
+          }
         />
 
         <main className="flex-1 flex flex-col min-w-0 bg-canvas overflow-hidden">
-          {currentTab === "connections" && (
-            <ConnectionsView
-              connections={connections}
-              activeConnection={activeConnection}
-              onSelectConnection={selectConnection}
-              onOpenNewModal={handleOpenNewConn}
-              onEditProfile={handleEditConn}
-              onDeleteProfile={removeProfile}
-              onTestPing={testPing}
-              onNavigateToExplorer={() => setCurrentTab("documents")}
-            />
-          )}
-
-          {currentTab === "documents" && (
-            <DocumentExplorer
+          {selectedDb && selectedCollection ? (
+            <CollectionWorkspace
               connectionId={activeConnection?.id || null}
               database={selectedDb}
               collection={selectedCollection}
               isProduction={isProduction}
               onRequireProductionConfirm={triggerProductionGuard}
+              onOpenBackup={(db, col) =>
+                setBackupModal({ isOpen: true, db, col })
+              }
+              onOpenExport={(db, col) =>
+                setExportModal({ isOpen: true, db, col })
+              }
+              onOpenImport={(db, col) =>
+                setImportModal({ isOpen: true, db, col })
+              }
             />
-          )}
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-canvas">
+              <div className="w-14 h-14 rounded-2xl bg-panel border border-hairline flex items-center justify-center text-mongo mb-4 shadow-sm">
+                <Database className="w-7 h-7" />
+              </div>
+              <h2 className="text-base font-semibold text-white tracking-tight">
+                {activeConnection
+                  ? `Connected to ${activeConnection.name}`
+                  : "No Active Connection"}
+              </h2>
+              <p className="text-xs text-gray-400 max-w-md mt-1.5 leading-relaxed">
+                {activeConnection
+                  ? "Select a collection from the Object Explorer on the left to inspect documents, manage indexes, or analyze schema distributions."
+                  : "Create or choose a MongoDB connection profile to begin exploring your databases."}
+              </p>
 
-          {currentTab === "backup" && (
-            <BackupRestoreView
-              connectionId={activeConnection?.id || null}
-              database={selectedDb}
-              availableCollections={availableCollections}
-              isProduction={isProduction}
-              onRequireProductionConfirm={triggerProductionGuard}
-            />
-          )}
-
-          {currentTab === "export" && (
-            <ExportImportView
-              connectionId={activeConnection?.id || null}
-              database={selectedDb}
-              collection={selectedCollection}
-              isProduction={isProduction}
-              onRequireProductionConfirm={triggerProductionGuard}
-            />
-          )}
-
-          {currentTab === "engine" && (
-            <EngineDashboard
-              tools={tools}
-              onEnsureTool={ensureTool}
-              onCheckVersion={checkVersion}
-              versionOutputs={versionOutputs}
-              isDownloading={isDownloading}
-            />
-          )}
-
-          {currentTab === "console" && (
-            <div className="flex-1 flex flex-col bg-canvas p-6 space-y-4 overflow-hidden">
-              <div className="flex items-center justify-between pb-3 border-b border-hairline shrink-0">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-surface border border-hairline text-mongo">
-                    <Terminal className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h1 className="text-base font-semibold text-white tracking-tight">
-                      Mongosh Interactive JavaScript Shell
-                    </h1>
-                    <p className="text-xs text-gray-400">
-                      Evaluate queries, administrative commands, and scripts against {selectedDb || "current database"}
-                    </p>
-                  </div>
-                </div>
-
+              <div className="mt-5 flex items-center gap-2.5">
                 <button
-                  onClick={handleRunConsole}
+                  onClick={handleOpenNewConn}
                   className="px-3.5 py-1.5 rounded-md bg-mongo hover:bg-emerald-600 text-xs font-semibold text-gray-950 flex items-center gap-1.5 transition-colors shadow-sm"
                 >
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                  <span>Execute Script</span>
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>New Connection</span>
+                </button>
+
+                <button
+                  onClick={() => setIsSettingsOpen(true)}
+                  className="px-3 py-1.5 rounded-md bg-surface hover:bg-surface-hover text-xs font-medium text-gray-300 border border-hairline flex items-center gap-1.5 transition-colors"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-mongo" />
+                  <span>Settings & CLI Tools</span>
                 </button>
               </div>
 
-              <div className="flex-1 flex flex-col min-h-0 space-y-3">
-                <div className="h-32 shrink-0 bg-surface border border-hairline rounded-lg p-3 font-mono text-xs">
-                  <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-mongo" />
-                    <span>Script Editor</span>
+              {/* Quick collection hints if connected */}
+              {hierarchy.length > 0 && (
+                <div className="mt-8 p-4 bg-panel border border-hairline rounded-xl max-w-lg w-full text-left space-y-2">
+                  <div className="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-mongo" />
+                    <span>Available Databases & Collections</span>
                   </div>
-                  <textarea
-                    value={consoleInput}
-                    onChange={(e) => setConsoleInput(e.target.value)}
-                    className="w-full h-20 bg-transparent text-gray-100 placeholder-gray-600 focus:outline-none resize-none font-mono selection:bg-mongo/30"
-                    placeholder="db.getCollectionNames();"
-                  />
+                  <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                    {hierarchy.slice(0, 4).map((d) => (
+                      <div
+                        key={d.name}
+                        className="p-2 rounded bg-surface/50 border border-hairline/60"
+                      >
+                        <div className="text-white font-medium truncate">
+                          {d.name}
+                        </div>
+                        <div className="text-[10px] text-gray-500">
+                          {d.collections.length} collections
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-
-                <div className="flex-1 min-h-0 bg-panel border border-hairline rounded-lg p-4 font-mono text-xs text-mongo overflow-auto leading-relaxed whitespace-pre-wrap">
-                  {consoleOutput}
-                </div>
-              </div>
+              )}
             </div>
           )}
         </main>
       </div>
 
-      {/* Modal for Creating / Editing Connection */}
+      {/* Settings Modal (CLI Engine, Storage, Preferences) */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        tools={tools}
+        onEnsureTool={ensureTool}
+        onCheckVersion={checkVersion}
+        versionOutputs={versionOutputs}
+        isDownloading={isDownloading}
+      />
+
+      {/* Connection Modal (New / Edit) */}
       <ConnectionModal
         isOpen={isConnModalOpen}
         onClose={() => setIsConnModalOpen(false)}
@@ -254,16 +315,69 @@ export const App: React.FC = () => {
         initialProfile={editingConn}
       />
 
+      {/* Backup / Dump Action Modal */}
+      <BackupModal
+        isOpen={backupModal.isOpen}
+        onClose={() =>
+          setBackupModal((prev) => ({ ...prev, isOpen: false }))
+        }
+        onRunBackup={handleRunBackup}
+        connectionId={activeConnection?.id || ""}
+        defaultDb={backupModal.db || selectedDb || "store_db"}
+        availableCollections={availableCollections}
+      />
+
+      {/* Restore Action Modal with File Explorer integration */}
+      <RestoreModal
+        isOpen={restoreModal.isOpen}
+        onClose={() =>
+          setRestoreModal((prev) => ({ ...prev, isOpen: false }))
+        }
+        onRunRestore={handleRunRestore}
+        onInspectArchive={inspectArchive}
+        connectionId={activeConnection?.id || ""}
+        defaultDb={restoreModal.db || selectedDb || "store_db"}
+        isProduction={isProduction}
+      />
+
+      {/* Export Wizard Action Modal */}
+      <ExportModal
+        isOpen={exportModal.isOpen}
+        onClose={() =>
+          setExportModal((prev) => ({ ...prev, isOpen: false }))
+        }
+        onRunExport={handleRunExport}
+        connectionId={activeConnection?.id || ""}
+        database={exportModal.db || selectedDb || "store_db"}
+        collection={exportModal.col || selectedCollection || "orders"}
+      />
+
+      {/* Import Wizard Action Modal */}
+      <ImportModal
+        isOpen={importModal.isOpen}
+        onClose={() =>
+          setImportModal((prev) => ({ ...prev, isOpen: false }))
+        }
+        onRunImport={handleRunImport}
+        onPreviewFile={previewImportFile}
+        connectionId={activeConnection?.id || ""}
+        database={importModal.db || selectedDb || "store_db"}
+        collection={importModal.col || selectedCollection || "orders"}
+        isProduction={isProduction}
+      />
+
       {/* Production Guard Multi-Step Confirmation Modal */}
       <ProductionGuardModal
         isOpen={guardState.isOpen}
-        onClose={() => setGuardState((prev) => ({ ...prev, isOpen: false }))}
+        onClose={() =>
+          setGuardState((prev) => ({ ...prev, isOpen: false }))
+        }
         actionName={guardState.actionName}
         entityName={guardState.entityName}
         onConfirmed={guardState.onConfirmed}
       />
 
-      {/* Modal for On-Demand Provisioning Progress */}
+      {/* Provisioning Progress Modal */}
       <ProvisioningModal isOpen={isDownloading} progress={activeDownload} />
     </div>
   );

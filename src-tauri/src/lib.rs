@@ -48,6 +48,12 @@ pub fn run() {
             commands::run_backup,
             commands::run_restore,
             commands::inspect_archive,
+            commands::list_backup_files,
+            commands::open_backup_directory,
+            commands::get_default_backup_dir,
+            commands::list_indexes,
+            commands::create_index,
+            commands::drop_index,
             commands::run_export,
             commands::run_import,
             commands::preview_import_file

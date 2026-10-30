@@ -2,11 +2,12 @@ use std::path::Path;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::models::{
-    ArchiveMetadata, BackupConfig, ConnectionProfile, DatabaseInfo, DownloadProgress, ExportConfig,
-    ExportFormat, ImportConfig, ImportPreview, JobSummary, PingResult, QueryParams, QueryResult,
-    RestoreConfig, ToolKind, ToolStatus,
+    ArchiveMetadata, BackupConfig, BackupFileInfo, ConnectionProfile, CreateIndexRequest,
+    DatabaseInfo, DownloadProgress, DropIndexRequest, ExportConfig, ExportFormat, ImportConfig,
+    ImportPreview, IndexInfo, JobSummary, PingResult, QueryParams, QueryResult, RestoreConfig,
+    ToolKind, ToolStatus,
 };
-use crate::process_runner::ProcessRunner;
+use crate::process_runner::{create_hidden_command, ProcessRunner};
 use crate::AppState;
 
 #[tauri::command]
@@ -47,7 +48,7 @@ pub async fn test_tool_version(
         _ => return Err(format!("Tool '{}' is not present on disk", tool_name)),
     };
 
-    let output = tokio::process::Command::new(&path)
+    let output = create_hidden_command(&path)
         .arg("--version")
         .output()
         .await
@@ -281,6 +282,91 @@ pub async fn run_restore(
 #[tauri::command]
 pub async fn inspect_archive(archive_path: String) -> Result<ArchiveMetadata, String> {
     crate::backup_service::BackupService::inspect_archive(Path::new(&archive_path))
+}
+
+#[tauri::command]
+pub async fn list_backup_files() -> Result<Vec<BackupFileInfo>, String> {
+    Ok(crate::backup_service::BackupService::list_backup_files())
+}
+
+#[tauri::command]
+pub async fn open_backup_directory() -> Result<(), String> {
+    crate::backup_service::BackupService::open_backup_directory()
+}
+
+#[tauri::command]
+pub async fn get_default_backup_dir() -> Result<String, String> {
+    Ok(
+        crate::backup_service::BackupService::get_default_backup_dir()
+            .to_string_lossy()
+            .to_string(),
+    )
+}
+
+// ==========================================
+// Index Management Commands
+// ==========================================
+
+#[tauri::command]
+pub async fn list_indexes(
+    state: State<'_, AppState>,
+    connection_id: String,
+    database: String,
+    collection: String,
+) -> Result<Vec<IndexInfo>, String> {
+    let profile = state
+        .connection_manager
+        .get_profile(&connection_id)
+        .ok_or_else(|| format!("Connection profile '{}' not found", connection_id))?;
+
+    let mongosh_path = state
+        .provisioner
+        .find_tool(ToolKind::Mongosh)
+        .map(|(p, _)| p);
+
+    ProcessRunner::list_indexes(
+        &profile.uri,
+        &database,
+        &collection,
+        mongosh_path.as_deref(),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn create_index(
+    state: State<'_, AppState>,
+    req: CreateIndexRequest,
+) -> Result<String, String> {
+    let profile = state
+        .connection_manager
+        .get_profile(&req.connection_id)
+        .ok_or_else(|| format!("Connection profile '{}' not found", req.connection_id))?;
+
+    let mongosh_path = state
+        .provisioner
+        .find_tool(ToolKind::Mongosh)
+        .map(|(p, _)| p);
+
+    ProcessRunner::create_index(&profile.uri, &req, mongosh_path.as_deref()).await
+}
+
+#[tauri::command]
+pub async fn drop_index(
+    state: State<'_, AppState>,
+    req: DropIndexRequest,
+) -> Result<String, String> {
+    let profile = state
+        .connection_manager
+        .get_profile(&req.connection_id)
+        .ok_or_else(|| format!("Connection profile '{}' not found", req.connection_id))?;
+
+    let mongosh_path = state
+        .provisioner
+        .find_tool(ToolKind::Mongosh)
+        .map(|(p, _)| p);
+
+    ProcessRunner::drop_index(&profile.uri, &req, mongosh_path.as_deref()).await
 }
 
 // ==========================================

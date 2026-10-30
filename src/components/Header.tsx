@@ -1,5 +1,5 @@
 import React from "react";
-import { Search, RefreshCw, Sparkles, ChevronRight, ShieldAlert, Server } from "lucide-react";
+import { Search, RefreshCw, Sparkles, ChevronRight, ShieldAlert, Server, Settings } from "lucide-react";
 import { ConnectionProfile } from "../types";
 
 interface HeaderProps {
@@ -11,6 +11,7 @@ interface HeaderProps {
   activeDatabase: string | null;
   activeCollection: string | null;
   latencyMs?: number | null;
+  onOpenSettings?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -22,6 +23,7 @@ export const Header: React.FC<HeaderProps> = ({
   activeDatabase,
   activeCollection,
   latencyMs,
+  onOpenSettings,
 }) => {
   const isProd = activeConnection?.environment === "production";
 
@@ -110,6 +112,16 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin text-mongo" : ""}`} />
         </button>
+
+        {onOpenSettings && (
+          <button
+            onClick={onOpenSettings}
+            className="p-1.5 rounded-md hover:bg-surface text-gray-400 hover:text-white border border-transparent hover:border-hairline transition-all duration-150"
+            title="Application Settings"
+          >
+            <Settings className="w-3.5 h-3.5" />
+          </button>
+        )}
 
         <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded bg-mongo/10 border border-mongo/20 text-mongo text-xs font-mono">
           <Sparkles className="w-3 h-3 text-mongo" />

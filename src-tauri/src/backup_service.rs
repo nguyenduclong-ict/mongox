@@ -1,7 +1,10 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use crate::models::{ArchiveMetadata, BackupConfig, JobSummary, RestoreConfig};
+use chrono::{DateTime, Utc};
+
+use crate::models::{ArchiveMetadata, BackupConfig, BackupFileInfo, JobSummary, RestoreConfig};
+use crate::process_runner::create_hidden_command;
 
 pub struct BackupService;
 
@@ -105,6 +108,91 @@ impl BackupService {
         })
     }
 
+    /// Resolve managed backup storage directory (%LOCALAPPDATA%\Mongox\backups)
+    pub fn get_default_backup_dir() -> PathBuf {
+        let base_dir = if let Some(dir) = dirs::data_local_dir() {
+            dir.join("Mongox").join("backups")
+        } else if let Some(home) = dirs::home_dir() {
+            home.join(".mongox").join("backups")
+        } else {
+            PathBuf::from("backups")
+        };
+        let _ = std::fs::create_dir_all(&base_dir);
+        base_dir
+    }
+
+    /// List existing backup archive files in the managed backup directory
+    pub fn list_backup_files() -> Vec<BackupFileInfo> {
+        let dir = Self::get_default_backup_dir();
+        let mut results = Vec::new();
+
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    let filename = path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    let lower = filename.to_lowercase();
+                    if lower.ends_with(".dump.gz")
+                        || lower.ends_with(".dump")
+                        || lower.ends_with(".gz")
+                        || lower.ends_with(".zip")
+                        || lower.ends_with(".tar.gz")
+                    {
+                        let meta = entry.metadata().ok();
+                        let size_bytes = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+                        let created_at = meta
+                            .and_then(|m| m.modified().ok())
+                            .map(|time| {
+                                let dt: DateTime<Utc> = time.into();
+                                dt.to_rfc3339()
+                            })
+                            .unwrap_or_else(|| Utc::now().to_rfc3339());
+
+                        results.push(BackupFileInfo {
+                            filename,
+                            path: path.to_string_lossy().to_string(),
+                            size_bytes,
+                            created_at,
+                        });
+                    }
+                }
+            }
+        }
+
+        results.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        results
+    }
+
+    /// Open backup directory in native OS file manager (Windows File Explorer)
+    pub fn open_backup_directory() -> Result<(), String> {
+        let dir = Self::get_default_backup_dir();
+        #[cfg(target_os = "windows")]
+        {
+            std::process::Command::new("explorer.exe")
+                .arg(&dir)
+                .spawn()
+                .map_err(|e| format!("Failed to open Windows Explorer: {}", e))?;
+        }
+        #[cfg(target_os = "macos")]
+        {
+            std::process::Command::new("open")
+                .arg(&dir)
+                .spawn()
+                .map_err(|e| format!("Failed to open directory: {}", e))?;
+        }
+        #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+        {
+            std::process::Command::new("xdg-open")
+                .arg(&dir)
+                .spawn()
+                .map_err(|e| format!("Failed to open directory: {}", e))?;
+        }
+        Ok(())
+    }
+
     /// Run backup dump operation
     pub async fn run_backup(
         uri: &str,
@@ -116,7 +204,7 @@ impl BackupService {
         if let Some(path) = mongodump_path {
             if path.is_file() {
                 let args = Self::build_dump_arguments(uri, config);
-                let output = tokio::process::Command::new(path)
+                let output = create_hidden_command(path)
                     .args(&args)
                     .output()
                     .await
@@ -177,7 +265,7 @@ impl BackupService {
         if let Some(path) = mongorestore_path {
             if path.is_file() {
                 let args = Self::build_restore_arguments(uri, config);
-                let output = tokio::process::Command::new(path)
+                let output = create_hidden_command(path)
                     .args(&args)
                     .output()
                     .await

@@ -9,6 +9,10 @@ import {
   BackupConfig,
   RestoreConfig,
   ArchiveMetadata,
+  BackupFileInfo,
+  IndexInfo,
+  CreateIndexRequest,
+  DropIndexRequest,
   ExportConfig,
   ImportConfig,
   ImportPreview,
@@ -356,6 +360,105 @@ export async function inspectArchive(archivePath: string): Promise<ArchiveMetada
     is_valid: true,
     detected_database: "store_db",
   };
+}
+
+export async function listBackupFiles(): Promise<BackupFileInfo[]> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<BackupFileInfo[]>("list_backup_files");
+  }
+
+  return [
+    {
+      filename: "backup_store_db_2026-10-30.dump.gz",
+      path: "C:\\Users\\Mock\\AppData\\Local\\Mongox\\backups\\backup_store_db_2026-10-30.dump.gz",
+      size_bytes: 8388608,
+      created_at: new Date().toISOString(),
+    },
+    {
+      filename: "backup_analytics_2026-10-28.dump.gz",
+      path: "C:\\Users\\Mock\\AppData\\Local\\Mongox\\backups\\backup_analytics_2026-10-28.dump.gz",
+      size_bytes: 25165824,
+      created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+    },
+  ];
+}
+
+export async function openBackupDirectory(): Promise<void> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke<void>("open_backup_directory");
+  }
+}
+
+export async function getDefaultBackupDir(): Promise<string> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<string>("get_default_backup_dir");
+  }
+
+  return "C:\\Users\\Mock\\AppData\\Local\\Mongox\\backups";
+}
+
+// ==========================================
+// Index Management APIs
+// ==========================================
+
+export async function listIndexes(
+  connectionId: string,
+  database: string,
+  collection: string
+): Promise<IndexInfo[]> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<IndexInfo[]>("list_indexes", {
+      connectionId,
+      database,
+      collection,
+    });
+  }
+
+  return [
+    {
+      name: "_id_",
+      keys: [["_id", 1]],
+      unique: true,
+      sparse: false,
+      size_bytes: 36864,
+    },
+    {
+      name: "email_1",
+      keys: [["email", 1]],
+      unique: true,
+      sparse: false,
+      size_bytes: 20480,
+    },
+    {
+      name: "status_1_createdAt_-1",
+      keys: [["status", 1], ["createdAt", -1]],
+      unique: false,
+      sparse: false,
+      size_bytes: 16384,
+    },
+  ];
+}
+
+export async function createIndex(req: CreateIndexRequest): Promise<string> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<string>("create_index", { req });
+  }
+
+  return req.name || "index_created";
+}
+
+export async function dropIndex(req: DropIndexRequest): Promise<string> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<string>("drop_index", { req });
+  }
+
+  return req.index_name;
 }
 
 // ==========================================

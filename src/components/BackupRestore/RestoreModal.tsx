@@ -1,6 +1,18 @@
-import React, { useState } from "react";
-import { ArchiveMetadata, RestoreConfig } from "../../types";
-import { FolderArchive, X, Play, ShieldAlert, FileSearch, CheckCircle2, AlertTriangle } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { ArchiveMetadata, BackupFileInfo, RestoreConfig } from "../../types";
+import {
+  FolderArchive,
+  X,
+  Play,
+  ShieldAlert,
+  FileSearch,
+  CheckCircle2,
+  AlertTriangle,
+  ExternalLink,
+  HardDrive,
+  Clock,
+} from "lucide-react";
+import { listBackupFiles, openBackupDirectory } from "../../services/tauri";
 
 interface RestoreModalProps {
   isOpen: boolean;
@@ -21,20 +33,54 @@ export const RestoreModal: React.FC<RestoreModalProps> = ({
   defaultDb,
   isProduction,
 }) => {
-  const [inputPath, setInputPath] = useState<string>("backup_store_db.dump.gz");
+  const [inputPath, setInputPath] = useState<string>("");
   const [database, setDatabase] = useState<string>(defaultDb || "store_db");
   const [dropExisting, setDropExisting] = useState<boolean>(false);
   const [stopOnError, setStopOnError] = useState<boolean>(true);
   const [nsInclude, setNsInclude] = useState<string>("");
 
+  const [backupFiles, setBackupFiles] = useState<BackupFileInfo[]>([]);
   const [archiveMeta, setArchiveMeta] = useState<ArchiveMetadata | null>(null);
   const [isInspecting, setIsInspecting] = useState<boolean>(false);
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (isOpen) {
+      setDatabase(defaultDb || "store_db");
+      listBackupFiles().then((files) => {
+        setBackupFiles(files);
+        if (files.length > 0) {
+          setInputPath(files[0].path);
+          onInspectArchive(files[0].path)
+            .then(setArchiveMeta)
+            .catch(() => {});
+        }
+      });
+    }
+  }, [isOpen, defaultDb, onInspectArchive]);
+
   if (!isOpen) return null;
 
+  const handleSelectFile = async (file: BackupFileInfo) => {
+    setInputPath(file.path);
+    setIsInspecting(true);
+    setError(null);
+    try {
+      const meta = await onInspectArchive(file.path);
+      setArchiveMeta(meta);
+      if (meta.detected_database) {
+        setDatabase(meta.detected_database);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsInspecting(false);
+    }
+  };
+
   const handleInspect = async () => {
+    if (!inputPath.trim()) return;
     setIsInspecting(true);
     setError(null);
     try {
@@ -73,7 +119,7 @@ export const RestoreModal: React.FC<RestoreModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-150">
-      <div className="w-full max-w-lg bg-modal border border-white/10 rounded-xl shadow-modal text-gray-200 overflow-hidden flex flex-col">
+      <div className="w-full max-w-xl bg-modal border border-white/10 rounded-xl shadow-modal text-gray-200 overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="h-14 px-6 border-b border-hairline flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
@@ -85,7 +131,7 @@ export const RestoreModal: React.FC<RestoreModalProps> = ({
                 Restore Database Archive (mongorestore)
               </h2>
               <p className="text-[11px] text-gray-400">
-                Inspect and unpack collections from a .dump.gz archive
+                1-click selection from managed backups or custom file path
               </p>
             </div>
           </div>
@@ -98,25 +144,83 @@ export const RestoreModal: React.FC<RestoreModalProps> = ({
         </div>
 
         {/* Body */}
-        <form onSubmit={handleRestore} className="p-6 space-y-4">
-          {/* Source Archive Path */}
+        <form onSubmit={handleRestore} className="p-6 space-y-4 overflow-y-auto flex-1">
+          {/* Detected Backups List on Disk */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-white flex items-center gap-1.5">
+                <HardDrive className="w-3.5 h-3.5 text-mongo" />
+                <span>Detected Backups in Managed Storage</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => openBackupDirectory()}
+                className="text-[11px] text-mongo hover:text-emerald-400 font-mono flex items-center gap-1 transition-colors"
+                title="Open backup folder in Windows Explorer"
+              >
+                <ExternalLink className="w-3 h-3" />
+                <span>Open Folder</span>
+              </button>
+            </div>
+
+            {backupFiles.length > 0 ? (
+              <div className="max-h-32 overflow-y-auto border border-hairline rounded-lg divide-y divide-hairline bg-surface/50">
+                {backupFiles.map((file) => {
+                  const isSelected = inputPath === file.path;
+                  return (
+                    <div
+                      key={file.path}
+                      onClick={() => handleSelectFile(file)}
+                      className={`p-2 flex items-center justify-between text-xs cursor-pointer transition-colors ${
+                        isSelected
+                          ? "bg-mongo/10 border-l-2 border-l-mongo text-white font-medium"
+                          : "hover:bg-surface text-gray-300"
+                      }`}
+                    >
+                      <div className="truncate max-w-sm">
+                        <div className="truncate font-mono">{file.filename}</div>
+                        <div className="text-[10px] text-gray-500 font-mono flex items-center gap-2">
+                          <span className="flex items-center gap-0.5">
+                            <Clock className="w-2.5 h-2.5" />
+                            {new Date(file.created_at).toLocaleDateString()}
+                          </span>
+                          <span>•</span>
+                          <span>{(file.size_bytes / (1024 * 1024)).toFixed(2)} MB</span>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface border border-hairline text-mongo shrink-0">
+                        {isSelected ? "Selected" : "Pick"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-3 text-[11px] text-gray-500 border border-hairline rounded-lg bg-surface/30 text-center font-mono">
+                No backup files found in default storage folder.
+              </div>
+            )}
+          </div>
+
+          {/* Source Archive Path & Manual Inspector */}
           <div>
             <label className="block text-xs font-medium text-gray-300 mb-1">
-              Source Archive File Path (.dump.gz)
+              Selected Archive File Path
             </label>
             <div className="flex gap-2">
               <input
                 type="text"
                 value={inputPath}
                 onChange={(e) => setInputPath(e.target.value)}
+                placeholder="Path to .dump.gz file"
                 required
                 className="flex-1 px-3 py-1.5 bg-surface border border-hairline rounded-md text-xs font-mono text-white focus:outline-none focus:border-mongo"
               />
               <button
                 type="button"
                 onClick={handleInspect}
-                disabled={isInspecting}
-                className="px-3 py-1.5 rounded-md bg-surface hover:bg-surface-hover text-xs font-mono text-gray-300 border border-hairline flex items-center gap-1.5 shrink-0 transition-colors"
+                disabled={isInspecting || !inputPath.trim()}
+                className="px-3 py-1.5 rounded-md bg-surface hover:bg-surface-hover text-xs font-mono text-gray-300 border border-hairline flex items-center gap-1.5 shrink-0 transition-colors disabled:opacity-50"
               >
                 <FileSearch className={`w-3.5 h-3.5 ${isInspecting ? "animate-spin text-mongo" : ""}`} />
                 <span>{isInspecting ? "Inspecting..." : "Inspect"}</span>
@@ -129,11 +233,11 @@ export const RestoreModal: React.FC<RestoreModalProps> = ({
             <div className="p-3 rounded-lg bg-surface/80 border border-hairline text-xs font-mono space-y-1">
               <div className="flex items-center gap-1.5 text-mongo font-semibold">
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Valid MongoDB Archive Header Detected</span>
+                <span>Archive Metadata Validated</span>
               </div>
               <div className="text-gray-400 text-[11px] flex justify-between">
                 <span>Archive Size: {(archiveMeta.size_bytes / (1024 * 1024)).toFixed(2)} MB</span>
-                <span>Detected DB: {archiveMeta.detected_database || "(Universal)"}</span>
+                <span>Detected Target DB: {archiveMeta.detected_database || "(Universal)"}</span>
               </div>
             </div>
           )}
@@ -218,7 +322,7 @@ export const RestoreModal: React.FC<RestoreModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={isRunning}
+              disabled={isRunning || !inputPath.trim()}
               className="px-4 py-1.5 rounded-md bg-emerald-500 hover:bg-emerald-600 text-xs font-semibold text-gray-950 flex items-center gap-1.5 transition-colors shadow-sm disabled:opacity-50"
             >
               <Play className={`w-3.5 h-3.5 ${isRunning ? "animate-spin" : ""}`} />

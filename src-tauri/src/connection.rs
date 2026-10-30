@@ -9,6 +9,7 @@ use chrono::Utc;
 use uuid::Uuid;
 
 use crate::models::{CollectionInfo, ConnectionProfile, DatabaseInfo, Environment, PingResult};
+use crate::process_runner::create_hidden_command;
 
 pub struct ConnectionManager {
     storage_path: PathBuf,
@@ -139,7 +140,7 @@ impl ConnectionManager {
                     }
                 "#;
 
-                let output = tokio::process::Command::new(path)
+                let output = create_hidden_command(path)
                     .arg(uri)
                     .arg("--quiet")
                     .arg("--eval")
@@ -257,7 +258,7 @@ impl ConnectionManager {
                     }
                 "#;
 
-                let output = tokio::process::Command::new(path)
+                let output = create_hidden_command(path)
                     .arg(uri)
                     .arg("--quiet")
                     .arg("--eval")

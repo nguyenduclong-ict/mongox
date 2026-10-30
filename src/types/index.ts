@@ -106,6 +106,42 @@ export interface ArchiveMetadata {
   detected_database?: string;
 }
 
+export interface BackupFileInfo {
+  filename: string;
+  path: string;
+  size_bytes: number;
+  created_at: string;
+}
+
+// ==========================================
+// Index Management Types
+// ==========================================
+
+export interface IndexInfo {
+  name: string;
+  keys: [string, number][];
+  unique: boolean;
+  sparse: boolean;
+  size_bytes: number;
+}
+
+export interface CreateIndexRequest {
+  connection_id: string;
+  database: string;
+  collection: string;
+  keys: [string, number][];
+  name?: string;
+  unique: boolean;
+  sparse: boolean;
+}
+
+export interface DropIndexRequest {
+  connection_id: string;
+  database: string;
+  collection: string;
+  index_name: string;
+}
+
 // ==========================================
 // Export & Import Types
 // ==========================================
