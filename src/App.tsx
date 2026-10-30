@@ -167,7 +167,7 @@ export const App: React.FC = () => {
   const activeDbInfo = hierarchy.find((d) => d.name === (selectedDb || backupModal.db));
   const availableCollections = activeDbInfo
     ? activeDbInfo.collections.map((c) => c.name)
-    : ["orders", "customers", "products"];
+    : [];
 
   return (
     <div className="h-screen w-screen flex flex-col bg-canvas text-gray-200 select-none overflow-hidden font-sans">
@@ -265,6 +265,39 @@ export const App: React.FC = () => {
                   <span>Settings & CLI Tools</span>
                 </button>
               </div>
+
+              {/* Real Connection Status Diagnostic */}
+              {activeConnection && hierarchy.length === 0 && (
+                <div className="mt-6 p-4 bg-panel border border-hairline rounded-xl max-w-md w-full text-left space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-gray-300">
+                      Connection Status
+                    </span>
+                    <button
+                      onClick={() => testPing(activeConnection.uri)}
+                      className="text-[11px] font-mono text-mongo hover:text-emerald-400"
+                    >
+                      Ping Server
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-gray-400 font-mono">
+                    Target: {activeConnection.uri}
+                  </p>
+                  {pingResult && (
+                    <div
+                      className={`p-2 rounded text-xs font-mono border ${
+                        pingResult.success
+                          ? "bg-mongo/10 border-mongo/30 text-emerald-300"
+                          : "bg-guard/10 border-guard/30 text-red-300"
+                      }`}
+                    >
+                      {pingResult.success
+                        ? `Online: Ping latency ${pingResult.latency_ms}ms (${pingResult.server_version || "MongoDB"})`
+                        : `Offline: ${pingResult.error || "Cannot connect to server"}`}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Quick collection hints if connected */}
               {hierarchy.length > 0 && (

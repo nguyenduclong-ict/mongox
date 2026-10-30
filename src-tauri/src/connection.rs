@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 use uuid::Uuid;
 
-use crate::models::{CollectionInfo, ConnectionProfile, DatabaseInfo, Environment, PingResult};
+use crate::models::{ConnectionProfile, DatabaseInfo, Environment, PingResult};
 use crate::process_runner::create_hidden_command;
 
 pub struct ConnectionManager {
@@ -266,62 +266,45 @@ impl ConnectionManager {
                     .output()
                     .await;
 
-                if let Ok(out) = output {
-                    let stdout = String::from_utf8_lossy(&out.stdout);
-                    for line in stdout.lines() {
-                        if let Some(json_str) = line.strip_prefix("MONGOHIERARCHY_RESULT:") {
-                            if let Some(err_msg) = json_str.strip_prefix("ERROR:") {
-                                return Err(err_msg.to_string());
-                            }
-                            if let Ok(dbs) = serde_json::from_str::<Vec<DatabaseInfo>>(json_str) {
-                                return Ok(dbs);
+                match output {
+                    Ok(out) => {
+                        let stdout = String::from_utf8_lossy(&out.stdout);
+                        let stderr = String::from_utf8_lossy(&out.stderr);
+                        for line in stdout.lines() {
+                            if let Some(json_str) = line.strip_prefix("MONGOHIERARCHY_RESULT:") {
+                                if let Some(err_msg) = json_str.strip_prefix("ERROR:") {
+                                    return Err(format!("MongoDB error: {}", err_msg));
+                                }
+                                if let Ok(dbs) = serde_json::from_str::<Vec<DatabaseInfo>>(json_str)
+                                {
+                                    return Ok(dbs);
+                                }
                             }
                         }
+                        if !out.status.success() {
+                            return Err(format!(
+                                "Failed to connect to MongoDB server: {}",
+                                if stderr.trim().is_empty() {
+                                    stdout.trim()
+                                } else {
+                                    stderr.trim()
+                                }
+                            ));
+                        }
+                        return Err(format!(
+                            "Failed to parse database hierarchy from output: {}",
+                            stdout.trim()
+                        ));
                     }
+                    Err(e) => return Err(format!("Failed to spawn mongosh process: {}", e)),
                 }
             }
         }
 
-        // Default / Mock hierarchy for offline or standalone exploration
-        Ok(vec![
-            DatabaseInfo {
-                name: "admin".to_string(),
-                size_on_disk: 1048576,
-                empty: false,
-                collections: vec![
-                    CollectionInfo {
-                        name: "system.users".to_string(),
-                        count: 2,
-                        size_bytes: 8192,
-                    },
-                    CollectionInfo {
-                        name: "system.version".to_string(),
-                        count: 1,
-                        size_bytes: 4096,
-                    },
-                ],
-            },
-            DatabaseInfo {
-                name: "config".to_string(),
-                size_on_disk: 2097152,
-                empty: false,
-                collections: vec![CollectionInfo {
-                    name: "settings".to_string(),
-                    count: 1,
-                    size_bytes: 4096,
-                }],
-            },
-            DatabaseInfo {
-                name: "local".to_string(),
-                size_on_disk: 4194304,
-                empty: false,
-                collections: vec![CollectionInfo {
-                    name: "startup_log".to_string(),
-                    count: 4,
-                    size_bytes: 16384,
-                }],
-            },
-        ])
+        Err(
+            "mongosh engine is not available. Please ensure it is installed via Settings."
+                .to_string(),
+        )
     }
 
     /// Extract host and port from MongoDB URI

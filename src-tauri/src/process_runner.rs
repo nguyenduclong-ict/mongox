@@ -1,6 +1,5 @@
 use std::ffi::OsStr;
 use std::path::Path;
-use std::time::Instant;
 
 use serde_json::Value;
 
@@ -94,8 +93,6 @@ impl ProcessRunner {
         params: &QueryParams,
         mongosh_path: Option<&Path>,
     ) -> Result<QueryResult, String> {
-        let start = Instant::now();
-
         if let Some(path) = mongosh_path {
             if path.is_file() {
                 let script = Self::build_query_script(params);
@@ -109,61 +106,34 @@ impl ProcessRunner {
                     .map_err(|e| format!("Failed to spawn mongosh process: {}", e))?;
 
                 let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
                 for line in stdout.lines() {
                     if let Some(json_content) = line.strip_prefix("MONGOQUERY_RESULT:") {
                         if let Some(err_msg) = json_content.strip_prefix("ERROR:") {
-                            return Err(err_msg.to_string());
+                            return Err(format!("MongoDB error: {}", err_msg));
                         }
                         if let Ok(res) = serde_json::from_str::<QueryResult>(json_content) {
                             return Ok(res);
                         }
                     }
                 }
+                let err_detail = if stderr.trim().is_empty() {
+                    stdout.trim()
+                } else {
+                    stderr.trim()
+                };
+                return Err(format!(
+                    "Query failed (exit code {:?}): {}",
+                    output.status.code(),
+                    err_detail
+                ));
             }
         }
 
-        // Deterministic simulation documents for offline / testing environments
-        let elapsed = start.elapsed().as_millis() as u64;
-        let mock_docs = vec![
-            serde_json::json!({
-                "_id": "6631a0e19f1b2c001a123456",
-                "customer": "Nguyen Van A",
-                "email": "vana@example.com",
-                "phone": "+84-901-234-567",
-                "status": "shipped",
-                "total": 120.50,
-                "items": ["item_01", "item_02"],
-                "createdAt": "2026-04-12T10:30:00.000Z"
-            }),
-            serde_json::json!({
-                "_id": "6631a0e19f1b2c001a123457",
-                "customer": "Tran Thi B",
-                "email": "thib@example.com",
-                "phone": "+84-912-345-678",
-                "status": "pending",
-                "total": 85.00,
-                "items": ["item_05"],
-                "createdAt": "2026-04-12T11:15:00.000Z"
-            }),
-            serde_json::json!({
-                "_id": "6631a0e19f1b2c001a123458",
-                "customer": "Le Van C",
-                "email": "vanc@example.com",
-                "phone": "+84-987-654-321",
-                "status": "shipped",
-                "total": 340.20,
-                "items": ["item_08", "item_09", "item_12"],
-                "createdAt": "2026-04-12T14:45:00.000Z"
-            }),
-        ];
-
-        Ok(QueryResult {
-            documents: mock_docs,
-            total_count: 3,
-            page: 1,
-            page_size: params.limit,
-            elapsed_ms: elapsed.max(12),
-        })
+        Err(
+            "mongosh engine is not available. Please ensure it is installed via Settings."
+                .to_string(),
+        )
     }
 
     /// Insert document into MongoDB collection
@@ -204,18 +174,29 @@ impl ProcessRunner {
                     .map_err(|e| format!("Failed to spawn mongosh: {}", e))?;
 
                 let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
                 for line in stdout.lines() {
                     if let Some(res) = line.strip_prefix("MONGOINSERT_RESULT:") {
                         if let Some(err) = res.strip_prefix("ERROR:") {
-                            return Err(err.to_string());
+                            return Err(format!("MongoDB error: {}", err));
                         }
                         return Ok(res.to_string());
                     }
                 }
+                let err_detail = if stderr.trim().is_empty() {
+                    stdout.trim()
+                } else {
+                    stderr.trim()
+                };
+                return Err(format!(
+                    "Insert failed (exit code {:?}): {}",
+                    output.status.code(),
+                    err_detail
+                ));
             }
         }
 
-        Ok("mock_inserted_id_".to_string() + &uuid::Uuid::new_v4().to_string())
+        Err("mongosh engine is not available. Please install it via Settings.".to_string())
     }
 
     /// Update document in MongoDB collection
@@ -269,18 +250,29 @@ impl ProcessRunner {
                     .map_err(|e| format!("Failed to spawn mongosh: {}", e))?;
 
                 let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
                 for line in stdout.lines() {
                     if let Some(res) = line.strip_prefix("MONGOUPDATE_RESULT:") {
                         if let Some(err) = res.strip_prefix("ERROR:") {
-                            return Err(err.to_string());
+                            return Err(format!("MongoDB error: {}", err));
                         }
                         return Ok(1);
                     }
                 }
+                let err_detail = if stderr.trim().is_empty() {
+                    stdout.trim()
+                } else {
+                    stderr.trim()
+                };
+                return Err(format!(
+                    "Update failed (exit code {:?}): {}",
+                    output.status.code(),
+                    err_detail
+                ));
             }
         }
 
-        Ok(1)
+        Err("mongosh engine is not available. Please install it via Settings.".to_string())
     }
 
     /// Delete document in MongoDB collection
@@ -323,18 +315,29 @@ impl ProcessRunner {
                     .map_err(|e| format!("Failed to spawn mongosh: {}", e))?;
 
                 let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
                 for line in stdout.lines() {
                     if let Some(res) = line.strip_prefix("MONGODELETE_RESULT:") {
                         if let Some(err) = res.strip_prefix("ERROR:") {
-                            return Err(err.to_string());
+                            return Err(format!("MongoDB error: {}", err));
                         }
                         return Ok(1);
                     }
                 }
+                let err_detail = if stderr.trim().is_empty() {
+                    stdout.trim()
+                } else {
+                    stderr.trim()
+                };
+                return Err(format!(
+                    "Delete failed (exit code {:?}): {}",
+                    output.status.code(),
+                    err_detail
+                ));
             }
         }
 
-        Ok(1)
+        Err("mongosh engine is not available. Please install it via Settings.".to_string())
     }
 
     /// List collection indexes with key directions, options, and memory sizes
@@ -387,43 +390,27 @@ impl ProcessRunner {
                     .map_err(|e| format!("Failed to spawn mongosh: {}", e))?;
 
                 let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
                 for line in stdout.lines() {
                     if let Some(json_content) = line.strip_prefix("MONGOINDEX_RESULT:") {
                         if let Some(err_msg) = json_content.strip_prefix("ERROR:") {
-                            return Err(err_msg.to_string());
+                            return Err(format!("MongoDB error: {}", err_msg));
                         }
                         if let Ok(res) = serde_json::from_str::<Vec<IndexInfo>>(json_content) {
                             return Ok(res);
                         }
                     }
                 }
+                let err_detail = if stderr.trim().is_empty() {
+                    stdout.trim()
+                } else {
+                    stderr.trim()
+                };
+                return Err(format!("Failed to list indexes: {}", err_detail));
             }
         }
 
-        // Mock / Offline fallback
-        Ok(vec![
-            IndexInfo {
-                name: "_id_".to_string(),
-                keys: vec![("_id".to_string(), 1)],
-                unique: true,
-                sparse: false,
-                size_bytes: 36864,
-            },
-            IndexInfo {
-                name: "email_1".to_string(),
-                keys: vec![("email".to_string(), 1)],
-                unique: true,
-                sparse: false,
-                size_bytes: 20480,
-            },
-            IndexInfo {
-                name: "status_1_createdAt_-1".to_string(),
-                keys: vec![("status".to_string(), 1), ("createdAt".to_string(), -1)],
-                unique: false,
-                sparse: false,
-                size_bytes: 16384,
-            },
-        ])
+        Err("mongosh engine is not available. Please install it via Settings.".to_string())
     }
 
     /// Create index on collection
@@ -484,27 +471,27 @@ impl ProcessRunner {
                     .map_err(|e| format!("Failed to spawn mongosh: {}", e))?;
 
                 let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
                 for line in stdout.lines() {
                     if let Some(json_content) = line.strip_prefix("MONGOCREATEINDEX_RESULT:") {
                         if let Some(err_msg) = json_content.strip_prefix("ERROR:") {
-                            return Err(err_msg.to_string());
+                            return Err(format!("MongoDB error: {}", err_msg));
                         }
                         if let Ok(res) = serde_json::from_str::<serde_json::Value>(json_content) {
                             return Ok(res["name"].as_str().unwrap_or("index_created").to_string());
                         }
                     }
                 }
+                let err_detail = if stderr.trim().is_empty() {
+                    stdout.trim()
+                } else {
+                    stderr.trim()
+                };
+                return Err(format!("Create index failed: {}", err_detail));
             }
         }
 
-        let generated_name = req.name.clone().unwrap_or_else(|| {
-            req.keys
-                .iter()
-                .map(|(k, v)| format!("{}_{}", k, v))
-                .collect::<Vec<_>>()
-                .join("_")
-        });
-        Ok(generated_name)
+        Err("mongosh engine is not available. Please install it via Settings.".to_string())
     }
 
     /// Drop index from collection
@@ -543,18 +530,25 @@ impl ProcessRunner {
                     .map_err(|e| format!("Failed to spawn mongosh: {}", e))?;
 
                 let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
                 for line in stdout.lines() {
                     if let Some(json_content) = line.strip_prefix("MONGODROPINDEX_RESULT:") {
                         if let Some(err_msg) = json_content.strip_prefix("ERROR:") {
-                            return Err(err_msg.to_string());
+                            return Err(format!("MongoDB error: {}", err_msg));
                         }
                         return Ok(req.index_name.clone());
                     }
                 }
+                let err_detail = if stderr.trim().is_empty() {
+                    stdout.trim()
+                } else {
+                    stderr.trim()
+                };
+                return Err(format!("Drop index failed: {}", err_detail));
             }
         }
 
-        Ok(req.index_name.clone())
+        Err("mongosh engine is not available. Please install it via Settings.".to_string())
     }
 }
 

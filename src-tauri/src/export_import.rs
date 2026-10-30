@@ -398,61 +398,10 @@ impl ExportImportService {
             }
         }
 
-        // Offline / testing simulation: generate dynamic records adhering to config.fields and masking rules
-        let mut sim_docs = Vec::new();
-        let field_names = if !config.fields.is_empty() {
-            config.fields.clone()
-        } else {
-            vec![
-                "_id".to_string(),
-                "customer".to_string(),
-                "email".to_string(),
-                "phone".to_string(),
-            ]
-        };
-
-        for i in 1..=3 {
-            let mut map = serde_json::Map::new();
-            for f in &field_names {
-                let val = match f.as_str() {
-                    "_id" => Value::String(format!("6631a0e19f1b2c001a12345{}", i)),
-                    "email" => Value::String(format!("user{}@example.com", i)),
-                    "phone" => Value::String(format!("+1-555-010{}", i)),
-                    "total" | "amount" | "price" => serde_json::json!(100.0 * i as f64),
-                    "status" => {
-                        Value::String(if i % 2 == 0 { "active" } else { "pending" }.to_string())
-                    }
-                    other => Value::String(format!("sample_{}_{}", other, i)),
-                };
-                map.insert(f.clone(), val);
-            }
-            let mut doc = Value::Object(map);
-            if !config.masking_rules.is_empty() {
-                Self::apply_masking(&mut doc, &config.masking_rules);
-            }
-            sim_docs.push(doc);
-        }
-
-        let bytes = Self::write_documents_to_file(
-            &sim_docs,
-            config.format,
-            &config.fields,
-            target_output_path,
-        )?;
-
-        let elapsed_ms = start.elapsed().as_millis() as u64;
-        Ok(JobSummary {
-            success: true,
-            records_processed: sim_docs.len() as u64,
-            bytes_transferred: bytes,
-            elapsed_ms: elapsed_ms.max(100),
-            output_path: Some(config.output_path.clone()),
-            message: format!(
-                "Exported {} records to {} (Dynamic Simulation)",
-                sim_docs.len(),
-                config.output_path
-            ),
-        })
+        Err(
+            "mongoexport engine is not available. Please ensure it is installed via Settings."
+                .to_string(),
+        )
     }
 
     /// Execute import workflow
@@ -467,7 +416,7 @@ impl ExportImportService {
         if let Some(path) = mongoimport_path {
             if path.is_file() {
                 let args = Self::build_import_arguments(uri, config);
-                let output = tokio::process::Command::new(path)
+                let output = crate::process_runner::create_hidden_command(path)
                     .args(&args)
                     .output()
                     .await
@@ -491,31 +440,10 @@ impl ExportImportService {
             }
         }
 
-        let (records, bytes) = if input_path.is_file() {
-            let file = File::open(input_path).ok();
-            let count = file
-                .map(|f| BufReader::new(f).lines().count() as u64)
-                .unwrap_or(1);
-            let size = std::fs::metadata(input_path)
-                .map(|m| m.len())
-                .unwrap_or(1024);
-            (count.max(1), size)
-        } else {
-            (10, 1024)
-        };
-
-        let elapsed_ms = start.elapsed().as_millis() as u64;
-        Ok(JobSummary {
-            success: true,
-            records_processed: records,
-            bytes_transferred: bytes,
-            elapsed_ms: elapsed_ms.max(150),
-            output_path: Some(config.input_path.clone()),
-            message: format!(
-                "Imported {} records from {} using mode {:?} (Simulation)",
-                records, config.input_path, config.conflict_mode
-            ),
-        })
+        Err(
+            "mongoimport engine is not available. Please ensure it is installed via Settings."
+                .to_string(),
+        )
     }
 }
 

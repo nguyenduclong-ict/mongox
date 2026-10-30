@@ -184,27 +184,7 @@ export async function getConnectionHierarchy(id: string): Promise<DatabaseInfo[]
     return await invoke<DatabaseInfo[]>("get_connection_hierarchy", { id });
   }
 
-  return [
-    {
-      name: "store_db",
-      size_on_disk: 15728640,
-      empty: false,
-      collections: [
-        { name: "orders", count: 15420, size_bytes: 8388608 },
-        { name: "customers", count: 8210, size_bytes: 4194304 },
-        { name: "products", count: 1450, size_bytes: 2097152 },
-      ],
-    },
-    {
-      name: "analytics",
-      size_on_disk: 31457280,
-      empty: false,
-      collections: [
-        { name: "events", count: 245000, size_bytes: 25165824 },
-        { name: "pageviews", count: 89000, size_bytes: 6291456 },
-      ],
-    },
-  ];
+  return [];
 }
 
 // ==========================================
@@ -217,43 +197,12 @@ export async function executeQuery(params: QueryParams): Promise<QueryResult> {
     return await invoke<QueryResult>("execute_query", { params });
   }
 
-  // Sample documents for browser preview
-  const sampleDocs = [
-    {
-      _id: "6631a0e19f1b2c001a123456",
-      customer: "Nguyen Van A",
-      email: "vana@example.com",
-      status: "shipped",
-      total: 120.5,
-      items: ["item_01", "item_02"],
-      createdAt: "2026-04-12T10:30:00.000Z",
-    },
-    {
-      _id: "6631a0e19f1b2c001a123457",
-      customer: "Tran Thi B",
-      email: "thib@example.com",
-      status: "pending",
-      total: 85.0,
-      items: ["item_05"],
-      createdAt: "2026-04-12T11:15:00.000Z",
-    },
-    {
-      _id: "6631a0e19f1b2c001a123458",
-      customer: "Le Van C",
-      email: "vanc@example.com",
-      status: "shipped",
-      total: 340.2,
-      items: ["item_08", "item_09", "item_12"],
-      createdAt: "2026-04-12T14:45:00.000Z",
-    },
-  ];
-
   return {
-    documents: sampleDocs,
-    total_count: sampleDocs.length,
+    documents: [],
+    total_count: 0,
     page: 1,
     page_size: params.limit,
-    elapsed_ms: 18,
+    elapsed_ms: 0,
   };
 }
 
@@ -368,20 +317,7 @@ export async function listBackupFiles(): Promise<BackupFileInfo[]> {
     return await invoke<BackupFileInfo[]>("list_backup_files");
   }
 
-  return [
-    {
-      filename: "backup_store_db_2026-10-30.dump.gz",
-      path: "C:\\Users\\Mock\\AppData\\Local\\Mongox\\backups\\backup_store_db_2026-10-30.dump.gz",
-      size_bytes: 8388608,
-      created_at: new Date().toISOString(),
-    },
-    {
-      filename: "backup_analytics_2026-10-28.dump.gz",
-      path: "C:\\Users\\Mock\\AppData\\Local\\Mongox\\backups\\backup_analytics_2026-10-28.dump.gz",
-      size_bytes: 25165824,
-      created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
-    },
-  ];
+  return [];
 }
 
 export async function openBackupDirectory(): Promise<void> {
@@ -418,29 +354,7 @@ export async function listIndexes(
     });
   }
 
-  return [
-    {
-      name: "_id_",
-      keys: [["_id", 1]],
-      unique: true,
-      sparse: false,
-      size_bytes: 36864,
-    },
-    {
-      name: "email_1",
-      keys: [["email", 1]],
-      unique: true,
-      sparse: false,
-      size_bytes: 20480,
-    },
-    {
-      name: "status_1_createdAt_-1",
-      keys: [["status", 1], ["createdAt", -1]],
-      unique: false,
-      sparse: false,
-      size_bytes: 16384,
-    },
-  ];
+  return [];
 }
 
 export async function createIndex(req: CreateIndexRequest): Promise<string> {

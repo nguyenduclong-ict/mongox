@@ -239,19 +239,10 @@ impl BackupService {
             }
         }
 
-        // Mock simulation execution
-        let elapsed_ms = start.elapsed().as_millis() as u64;
-        Ok(JobSummary {
-            success: true,
-            records_processed: 15420,
-            bytes_transferred: 8388608,
-            elapsed_ms: elapsed_ms.max(450),
-            output_path: Some(config.output_path.clone()),
-            message: format!(
-                "Backup completed successfully into {} (Simulated)",
-                config.output_path
-            ),
-        })
+        Err(
+            "mongodump engine is not available. Please ensure it is installed via Settings."
+                .to_string(),
+        )
     }
 
     /// Run restore operation
@@ -293,16 +284,10 @@ impl BackupService {
             }
         }
 
-        // Mock simulation execution
-        let elapsed_ms = start.elapsed().as_millis() as u64;
-        Ok(JobSummary {
-            success: true,
-            records_processed: 15420,
-            bytes_transferred: 8388608,
-            elapsed_ms: elapsed_ms.max(620),
-            output_path: Some(config.input_path.clone()),
-            message: format!("Restored data from {} (Simulated)", config.input_path),
-        })
+        Err(
+            "mongorestore engine is not available. Please ensure it is installed via Settings."
+                .to_string(),
+        )
     }
 }
 

@@ -6,9 +6,8 @@ use mongox_lib::backup_service::BackupService;
 use mongox_lib::connection::ConnectionManager;
 use mongox_lib::export_import::ExportImportService;
 use mongox_lib::models::{
-    BackupConfig, ConflictMode, ConnectionProfile, CreateIndexRequest, DropIndexRequest,
-    Environment, ExportConfig, ExportFormat, ImportConfig, MaskingRule, MaskingRuleType,
-    QueryParams, RestoreConfig,
+    BackupConfig, ConflictMode, ConnectionProfile, DropIndexRequest, Environment, ExportConfig,
+    ExportFormat, ImportConfig, MaskingRule, MaskingRuleType, QueryParams, RestoreConfig,
 };
 use mongox_lib::process_runner::ProcessRunner;
 
@@ -232,189 +231,6 @@ fn test_export_and_import_argument_builders() {
 // ==========================================
 
 #[tokio::test]
-async fn test_run_export_with_masking_execution() {
-    let dir = tempdir().unwrap();
-    let export_out = dir.path().join("customers_masked.csv");
-
-    let config = ExportConfig {
-        connection_id: "conn-local".to_string(),
-        database: "crm".to_string(),
-        collection: "contacts".to_string(),
-        format: ExportFormat::Csv,
-        fields: vec![
-            "_id".to_string(),
-            "customer".to_string(),
-            "email".to_string(),
-            "phone".to_string(),
-        ],
-        filter: None,
-        masking_rules: vec![
-            MaskingRule {
-                field_name: "email".to_string(),
-                rule_type: MaskingRuleType::Email,
-            },
-            MaskingRule {
-                field_name: "phone".to_string(),
-                rule_type: MaskingRuleType::Phone,
-            },
-        ],
-        output_path: export_out.to_string_lossy().to_string(),
-    };
-
-    let summary = ExportImportService::run_export("mongodb://localhost:27017", &config, None)
-        .await
-        .unwrap();
-
-    assert!(summary.success);
-    assert!(summary.records_processed > 0);
-    assert!(export_out.is_file());
-
-    let content = std::fs::read_to_string(&export_out).unwrap();
-    let lines: Vec<&str> = content.lines().collect();
-
-    // Verify CSV header matches requested fields dynamically
-    assert_eq!(lines[0], "_id,customer,email,phone");
-
-    // Verify masking applied to rows
-    for line in &lines[1..] {
-        assert!(line.contains("***@example.com"));
-        assert!(line.contains("***-***-"));
-    }
-}
-
-#[tokio::test]
-async fn test_run_import_execution() {
-    let dir = tempdir().unwrap();
-    let import_in = dir.path().join("users_feed.ndjson");
-    {
-        let mut f = File::create(&import_in).unwrap();
-        writeln!(f, "{{\"_id\": \"u1\", \"name\": \"User One\"}}").unwrap();
-        writeln!(f, "{{\"_id\": \"u2\", \"name\": \"User Two\"}}").unwrap();
-        writeln!(f, "{{\"_id\": \"u3\", \"name\": \"User Three\"}}").unwrap();
-    }
-
-    let config = ImportConfig {
-        connection_id: "conn-local".to_string(),
-        database: "crm".to_string(),
-        collection: "users".to_string(),
-        format: ExportFormat::Ndjson,
-        input_path: import_in.to_string_lossy().to_string(),
-        conflict_mode: ConflictMode::Upsert,
-    };
-
-    let summary = ExportImportService::run_import("mongodb://localhost:27017", &config, None)
-        .await
-        .unwrap();
-
-    assert!(summary.success);
-    assert_eq!(summary.records_processed, 3);
-}
-
-#[tokio::test]
-async fn test_run_backup_and_restore_execution() {
-    let dir = tempdir().unwrap();
-    let dump_file = dir.path().join("test_backup.dump.gz");
-
-    let backup_cfg = BackupConfig {
-        connection_id: "conn-local".to_string(),
-        database: "store_db".to_string(),
-        collections: vec!["orders".to_string()],
-        query_filter: None,
-        output_path: dump_file.to_string_lossy().to_string(),
-        gzip: true,
-        archive: true,
-    };
-
-    let backup_summary = BackupService::run_backup("mongodb://localhost:27017", &backup_cfg, None)
-        .await
-        .unwrap();
-
-    assert!(backup_summary.success);
-    assert_eq!(
-        backup_summary.output_path,
-        Some(dump_file.to_string_lossy().to_string())
-    );
-
-    let restore_cfg = RestoreConfig {
-        connection_id: "conn-local".to_string(),
-        database: "store_db".to_string(),
-        input_path: dump_file.to_string_lossy().to_string(),
-        drop_existing: true,
-        ns_include: None,
-        stop_on_error: true,
-    };
-
-    let restore_summary =
-        BackupService::run_restore("mongodb://localhost:27017", &restore_cfg, None)
-            .await
-            .unwrap();
-
-    assert!(restore_summary.success);
-    assert!(restore_summary.records_processed > 0);
-}
-
-#[tokio::test]
-async fn test_update_document_immutability_and_crud() {
-    // Test update_document with a patch JSON that explicitly includes _id
-    let patch_with_id =
-        r#"{"_id": "6631a0e19f1b2c001a123456", "customer": "Updated Name", "status": "delivered"}"#;
-
-    let res = ProcessRunner::update_document(
-        "mongodb://localhost:27017",
-        "store_db",
-        "orders",
-        "6631a0e19f1b2c001a123456",
-        patch_with_id,
-        None,
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(res, 1);
-
-    // Test insert_document
-    let new_doc = r#"{"customer": "Fresh Customer", "status": "pending"}"#;
-    let insert_id = ProcessRunner::insert_document(
-        "mongodb://localhost:27017",
-        "store_db",
-        "orders",
-        new_doc,
-        None,
-    )
-    .await
-    .unwrap();
-    assert!(!insert_id.is_empty());
-
-    // Test delete_document
-    let deleted_count = ProcessRunner::delete_document(
-        "mongodb://localhost:27017",
-        "store_db",
-        "orders",
-        &insert_id,
-        None,
-    )
-    .await
-    .unwrap();
-    assert_eq!(deleted_count, 1);
-
-    // Test execute_query
-    let query_params = QueryParams {
-        connection_id: "conn-1".to_string(),
-        database: "store_db".to_string(),
-        collection: "orders".to_string(),
-        filter: "{}".to_string(),
-        sort: None,
-        projection: None,
-        limit: 10,
-        skip: 0,
-    };
-    let query_res = ProcessRunner::execute_query("mongodb://localhost:27017", &query_params, None)
-        .await
-        .unwrap();
-    assert!(!query_res.documents.is_empty());
-}
-
-#[tokio::test]
 async fn test_backup_directory_and_archive_listing() {
     let backup_dir = BackupService::get_default_backup_dir();
     assert!(backup_dir.is_dir());
@@ -439,52 +255,85 @@ async fn test_backup_directory_and_archive_listing() {
 }
 
 #[tokio::test]
-async fn test_index_management_lifecycle() {
-    // 1. List indexes
-    let indexes =
-        ProcessRunner::list_indexes("mongodb://localhost:27017", "store_db", "orders", None)
-            .await
-            .unwrap();
-    assert!(!indexes.is_empty());
-    assert!(indexes.iter().any(|idx| idx.name == "_id_"));
-
-    // 2. Create index
-    let create_req = CreateIndexRequest {
-        connection_id: "conn-1".to_string(),
-        database: "store_db".to_string(),
-        collection: "orders".to_string(),
-        keys: vec![("user_id".to_string(), 1), ("created_at".to_string(), -1)],
-        name: Some("user_id_1_created_at_-1".to_string()),
-        unique: false,
-        sparse: true,
+async fn test_missing_tools_and_security_guards() {
+    let dir = tempdir().unwrap();
+    let export_out = dir.path().join("out.csv");
+    let export_cfg = ExportConfig {
+        connection_id: "c1".to_string(),
+        database: "db".to_string(),
+        collection: "col".to_string(),
+        format: ExportFormat::Csv,
+        fields: vec!["_id".to_string()],
+        filter: None,
+        masking_rules: vec![],
+        output_path: export_out.to_string_lossy().to_string(),
     };
 
-    let created_name = ProcessRunner::create_index("mongodb://localhost:27017", &create_req, None)
-        .await
-        .unwrap();
-    assert_eq!(created_name, "user_id_1_created_at_-1");
+    let export_err =
+        ExportImportService::run_export("mongodb://localhost:27017", &export_cfg, None).await;
+    assert!(export_err.is_err());
+    assert!(export_err
+        .unwrap_err()
+        .contains("mongoexport engine is not available"));
 
-    // 3. Drop index - safety check: dropping _id_ must fail
+    let backup_cfg = BackupConfig {
+        connection_id: "c1".to_string(),
+        database: "db".to_string(),
+        collections: vec![],
+        query_filter: None,
+        output_path: "backup.dump.gz".to_string(),
+        gzip: true,
+        archive: true,
+    };
+    let backup_err =
+        BackupService::run_backup("mongodb://localhost:27017", &backup_cfg, None).await;
+    assert!(backup_err.is_err());
+    assert!(backup_err
+        .unwrap_err()
+        .contains("mongodump engine is not available"));
+
+    let restore_cfg = RestoreConfig {
+        connection_id: "c1".to_string(),
+        database: "db".to_string(),
+        input_path: "backup.dump.gz".to_string(),
+        drop_existing: false,
+        ns_include: None,
+        stop_on_error: true,
+    };
+    let restore_err =
+        BackupService::run_restore("mongodb://localhost:27017", &restore_cfg, None).await;
+    assert!(restore_err.is_err());
+    assert!(restore_err
+        .unwrap_err()
+        .contains("mongorestore engine is not available"));
+
+    let query_params = QueryParams {
+        connection_id: "c1".to_string(),
+        database: "db".to_string(),
+        collection: "col".to_string(),
+        filter: "{}".to_string(),
+        sort: None,
+        projection: None,
+        limit: 10,
+        skip: 0,
+    };
+    let query_err =
+        ProcessRunner::execute_query("mongodb://localhost:27017", &query_params, None).await;
+    assert!(query_err.is_err());
+    assert!(query_err
+        .unwrap_err()
+        .contains("mongosh engine is not available"));
+
     let drop_id_req = DropIndexRequest {
-        connection_id: "conn-1".to_string(),
-        database: "store_db".to_string(),
-        collection: "orders".to_string(),
+        connection_id: "c1".to_string(),
+        database: "db".to_string(),
+        collection: "col".to_string(),
         index_name: "_id_".to_string(),
     };
     let drop_id_res =
         ProcessRunner::drop_index("mongodb://localhost:27017", &drop_id_req, None).await;
     assert!(drop_id_res.is_err());
-
-    // 4. Drop custom index - must succeed
-    let drop_custom_req = DropIndexRequest {
-        connection_id: "conn-1".to_string(),
-        database: "store_db".to_string(),
-        collection: "orders".to_string(),
-        index_name: "user_id_1_created_at_-1".to_string(),
-    };
-    let drop_custom_res =
-        ProcessRunner::drop_index("mongodb://localhost:27017", &drop_custom_req, None)
-            .await
-            .unwrap();
-    assert_eq!(drop_custom_res, "user_id_1_created_at_-1");
+    assert!(drop_id_res
+        .unwrap_err()
+        .contains("Cannot drop default _id_ index"));
 }
