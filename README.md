@@ -76,11 +76,42 @@ Pre-compiled installers are automatically built and published for each release a
 
 | Platform | Installer Format | Architecture |
 | :--- | :--- | :--- |
-| **Windows** | `.msi` (WiX) / `.exe` (NSIS) | x64, ARM64 |
-| **macOS** | `.dmg` / `.app` | Apple Silicon (M1/M2/M3/M4), Intel x64 |
-| **Linux (Ubuntu / Debian)** | `.deb` / `.AppImage` | x64, ARM64 |
+| **Windows** | `.msi` (WiX) / `.exe` (NSIS) | x64 |
+| **macOS** | `.dmg` / `.app` | Apple Silicon (M1/M2/M3/M4) |
+| **Linux (Ubuntu / Debian / RPM)** | `.deb` / `.AppImage` / `.rpm` | x64 |
 
-Visit the [Releases](https://github.com/your-username/mongox/releases) page to download the latest installer for your operating system.
+Download the latest installer from the official [Releases](https://github.com/nguyenduclong-ict/mongox/releases) page.
+
+### First-Time Launch & Security Prompts
+
+Because Mongox is an open-source community application distributed outside platform app stores without a paid commercial certificate, your operating system may display a security prompt during first launch:
+
+#### macOS ("Mongox is damaged and can't be opened")
+macOS Gatekeeper attaches a quarantine flag to files downloaded directly from the internet. To launch Mongox:
+1. Drag `Mongox.app` into your `/Applications` directory.
+2. Open **Terminal** and run:
+   ```bash
+   xattr -cr /Applications/Mongox.app
+   ```
+3. Open Mongox from your Applications folder.
+
+*Alternative*: In Finder, right-click (or Control-click) `Mongox.app`, select **Open**, and click **Open** in the confirmation dialog.
+
+#### Windows ("Windows protected your PC")
+Windows SmartScreen displays an informational dialog for newly published applications that have not yet accumulated download reputation:
+1. Click **More info**.
+2. Click **Run anyway**.
+
+#### Linux
+- **Debian / Ubuntu (.deb)**:
+  ```bash
+  sudo dpkg -i Mongox_*_amd64.deb
+  ```
+- **Universal AppImage**:
+  ```bash
+  chmod +x Mongox_*_amd64.AppImage
+  ./Mongox_*_amd64.AppImage
+  ```
 
 ---
 
@@ -103,7 +134,7 @@ Ensure you have installed:
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/your-username/mongox.git
+   git clone https://github.com/nguyenduclong-ict/mongox.git
    cd mongox
    ```
 
