@@ -3,6 +3,16 @@
 @tailwind utilities;
 
 @layer base {
+  /*
+    Size the shell from the webview, not 100vh. On macOS, WKWebView's vh
+    includes the title bar, so h-screen clips the bottom of tall dialogs.
+  */
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
   body {
     @apply bg-canvas text-gray-200 antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";

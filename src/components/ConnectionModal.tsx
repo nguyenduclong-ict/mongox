@@ -181,7 +181,6 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
         setName(pathDb || `${url.hostname}:${url.port || (srv ? "" : "27017")}`);
       }
 
-      showNotification("URI parsed and applied to all tabs.");
       setShowFromUriModal(false);
       return true;
     } catch {
@@ -351,7 +350,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-      <div className="w-full max-w-2xl bg-modal border border-white/10 rounded-xl shadow-modal text-gray-200 overflow-hidden flex flex-col h-[580px] min-h-[560px] max-h-[92vh] font-sans">
+      <div className="w-full max-w-2xl bg-modal border border-white/10 rounded-xl shadow-modal text-gray-200 overflow-hidden flex flex-col min-h-0 h-[600px] max-h-[calc(100vh-2rem)] font-sans">
         {/* Title Bar matching NoSQLBooster standard */}
         <div className="px-5 py-3.5 border-b border-hairline flex items-center justify-between shrink-0 bg-modal">
           <div className="flex items-center gap-2.5">
@@ -394,7 +393,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
         )}
 
         {/* Tab Content Body */}
-        <div className="p-5 space-y-4 overflow-y-auto flex-1 font-sans text-xs min-h-[440px]">
+        <div className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0 font-sans text-xs">
           {/* TAB 1: BASIC */}
           {activeTab === "basic" && (
             <div className="space-y-4">
@@ -1008,7 +1007,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
         </div>
 
         {/* Modal Action Bar matching NoSQLBooster ergonomics */}
-        <div className="px-5 py-3 border-t border-hairline flex items-center justify-between shrink-0 select-none">
+        <div className="px-5 py-3 border-t border-hairline bg-modal flex items-center justify-between gap-2 shrink-0 select-none">
           {/* Left: Test Connection */}
           <div>
             <button

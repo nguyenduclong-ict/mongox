@@ -30,7 +30,7 @@ import {
   insertDocument,
 } from "./services/tauri";
 import { ToastContainer, ToastMessage } from "./components/ui/Toast";
-import { Database, Plus, Layers, FileText, X } from "lucide-react";
+import { Database, Plus, Layers, FileText, X, Loader2 } from "lucide-react";
 
 interface WorkspaceTab {
   id: string;
@@ -128,18 +128,40 @@ export const App: React.FC = () => {
   const {
     connections,
     activeConnection,
+    connectingConnId,
     hierarchy,
     selectedDb,
     selectedCollection,
     pingResult,
     setSelectedDb,
     setSelectedCollection,
-    selectConnection,
+    connectConnection,
+    disconnectConnection,
     saveProfile,
     removeProfile,
     testPing,
     reloadHierarchy,
   } = useConnection();
+
+  const handleSelectConnection = async (conn: ConnectionProfile) => {
+    try {
+      await connectConnection(conn);
+      addToast(`Connected to ${conn.name}`, "success");
+    } catch (err) {
+      addToast(
+        `Failed to connect to ${conn.name}: ${err instanceof Error ? err.message : String(err)}`,
+        "error",
+        6000
+      );
+    }
+  };
+
+  const handleDisconnectConnection = (connId: string) => {
+    disconnectConnection(connId);
+    setTabs([]);
+    setActiveTabId(null);
+    addToast("Disconnected", "info", 2000);
+  };
 
   const isProduction = activeConnection?.environment === "production";
 
@@ -358,13 +380,15 @@ export const App: React.FC = () => {
     : [];
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-canvas text-gray-200 select-none overflow-hidden font-sans">
+    <div className="relative h-full w-full flex flex-col bg-canvas text-gray-200 select-none overflow-hidden font-sans">
       {/* Main Layout: Sidebar + Workspace */}
       <div className="flex-1 flex overflow-hidden">
         <Sidebar
           connections={connections}
           activeConnection={activeConnection}
-          onSelectConnection={selectConnection}
+          connectingConnId={connectingConnId}
+          onSelectConnection={handleSelectConnection}
+          onDisconnectConnection={handleDisconnectConnection}
           onOpenNewConnection={handleOpenNewConn}
           onOpenSettings={() => setIsSettingsOpen(true)}
           hierarchy={hierarchy}
@@ -456,15 +480,23 @@ export const App: React.FC = () => {
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-canvas">
               <div className="w-14 h-14 rounded-2xl bg-panel border border-hairline flex items-center justify-center text-mongo mb-4 shadow-sm">
-                <Database className="w-7 h-7" />
+                {connectingConnId ? (
+                  <Loader2 className="w-7 h-7 text-mongo animate-spin" />
+                ) : (
+                  <Database className="w-7 h-7" />
+                )}
               </div>
               <h2 className="text-base font-semibold text-white tracking-tight">
-                {activeConnection
+                {connectingConnId
+                  ? "Connecting to Database..."
+                  : activeConnection
                   ? `Connected to ${activeConnection.name}`
                   : "No Active Connection"}
               </h2>
               <p className="text-xs text-gray-400 max-w-md mt-1.5 leading-relaxed">
-                {activeConnection
+                {connectingConnId
+                  ? "Establishing network connection and discovering database hierarchy..."
+                  : activeConnection
                   ? "Select a collection from the Object Explorer on the left to inspect documents, manage indexes, or analyze schema distributions."
                   : "Create or choose a MongoDB connection profile to begin exploring your databases."}
               </p>

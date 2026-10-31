@@ -17,6 +17,8 @@ import {
   Users,
   Settings,
   RefreshCw,
+  Loader2,
+  Unplug,
 } from "lucide-react";
 import { ConnectionProfile, DatabaseInfo, Environment } from "../types";
 import { ContextMenu, ContextMenuItem } from "./ContextMenu";
@@ -24,7 +26,9 @@ import { ContextMenu, ContextMenuItem } from "./ContextMenu";
 interface SidebarProps {
   connections: ConnectionProfile[];
   activeConnection: ConnectionProfile | null;
+  connectingConnId?: string | null;
   onSelectConnection: (conn: ConnectionProfile) => void;
+  onDisconnectConnection?: (connId: string) => void;
   onOpenNewConnection: () => void;
   hierarchy: DatabaseInfo[];
   selectedDb: string | null;
@@ -51,7 +55,9 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   connections,
   activeConnection,
+  connectingConnId,
   onSelectConnection,
+  onDisconnectConnection,
   onOpenNewConnection,
   hierarchy,
   selectedDb,
@@ -193,105 +199,202 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Multi-Connection & Hierarchy Tree */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1.5 min-h-0">
         {connections.map((conn) => {
-          const isActive = activeConnection?.id === conn.id;
-          const isExpanded = expandedConns[conn.id] ?? (isActive || connections.length === 1);
+          const isConnecting = connectingConnId === conn.id;
+          const isConnected = activeConnection?.id === conn.id && !isConnecting;
+          const isExpanded = expandedConns[conn.id] ?? isConnected;
           const badge = getEnvBadge(conn.environment);
 
           return (
             <div key={conn.id} className="space-y-0.5">
               {/* Connection Root Node */}
               <div
-                onClick={() => onSelectConnection(conn)}
+                onClick={() => {
+                  if (isConnecting) return;
+                  if (isConnected) {
+                    setExpandedConns((prev) => ({
+                      ...prev,
+                      [conn.id]: !isExpanded,
+                    }));
+                  } else {
+                    onSelectConnection(conn);
+                  }
+                }}
                 onContextMenu={(e) => {
                   e.preventDefault();
-                  setContextMenu({
-                    x: e.clientX,
-                    y: e.clientY,
-                    items: [
-                      {
-                        label: `Connect: ${conn.name}`,
-                        icon: Server,
-                        onClick: () => onSelectConnection(conn),
-                      },
-                      {
-                        label: "Refresh",
-                        icon: RefreshCw,
-                        onClick: () => onRefreshConnection?.(conn.id),
-                      },
-                      {
-                        label: "Create Database",
-                        icon: Plus,
-                        onClick: () => onCreateDatabase?.(conn),
-                      },
-                      {
-                        label: "Manage Users",
-                        icon: Users,
-                        onClick: () => onOpenUserManagement?.("admin"),
-                      },
-                      { divider: true },
-                      {
-                        label: "Dump",
-                        icon: HardDriveDownload,
-                        onClick: () => onOpenBackupModal("", ""),
-                      },
-                      {
-                        label: "Restore",
-                        icon: Upload,
-                        onClick: () => onOpenRestoreModal(""),
-                      },
-                      { divider: true },
-                      {
-                        label: "Edit Connection",
-                        icon: Edit2,
-                        onClick: () => onEditConnection?.(conn),
-                      },
-                      {
-                        label: "Delete Connection",
-                        icon: Trash2,
-                        danger: true,
-                        onClick: () => onDeleteConnection?.(conn.id),
-                      },
-                    ],
-                  });
+                  if (isConnected) {
+                    setContextMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      items: [
+                        {
+                          label: "Disconnect",
+                          icon: Unplug,
+                          danger: true,
+                          onClick: () => onDisconnectConnection?.(conn.id),
+                        },
+                        {
+                          label: "Refresh",
+                          icon: RefreshCw,
+                          onClick: () => onRefreshConnection?.(conn.id),
+                        },
+                        {
+                          label: "Create Database",
+                          icon: Plus,
+                          onClick: () => onCreateDatabase?.(conn),
+                        },
+                        {
+                          label: "Manage Users",
+                          icon: Users,
+                          onClick: () => onOpenUserManagement?.("admin"),
+                        },
+                        { divider: true },
+                        {
+                          label: "Dump",
+                          icon: HardDriveDownload,
+                          onClick: () => onOpenBackupModal("", ""),
+                        },
+                        {
+                          label: "Restore",
+                          icon: Upload,
+                          onClick: () => onOpenRestoreModal(""),
+                        },
+                        { divider: true },
+                        {
+                          label: "Edit Connection",
+                          icon: Edit2,
+                          onClick: () => onEditConnection?.(conn),
+                        },
+                        {
+                          label: "Delete Connection",
+                          icon: Trash2,
+                          danger: true,
+                          onClick: () => onDeleteConnection?.(conn.id),
+                        },
+                      ],
+                    });
+                  } else if (isConnecting) {
+                    setContextMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      items: [
+                        {
+                          label: "Cancel / Disconnect",
+                          icon: Unplug,
+                          danger: true,
+                          onClick: () => onDisconnectConnection?.(conn.id),
+                        },
+                        { divider: true },
+                        {
+                          label: "Edit Connection",
+                          icon: Edit2,
+                          onClick: () => onEditConnection?.(conn),
+                        },
+                        {
+                          label: "Delete Connection",
+                          icon: Trash2,
+                          danger: true,
+                          onClick: () => onDeleteConnection?.(conn.id),
+                        },
+                      ],
+                    });
+                  } else {
+                    // Disconnected state: only Connect, Edit, Delete
+                    setContextMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      items: [
+                        {
+                          label: `Connect: ${conn.name}`,
+                          icon: Server,
+                          onClick: () => onSelectConnection(conn),
+                        },
+                        { divider: true },
+                        {
+                          label: "Edit Connection",
+                          icon: Edit2,
+                          onClick: () => onEditConnection?.(conn),
+                        },
+                        {
+                          label: "Delete Connection",
+                          icon: Trash2,
+                          danger: true,
+                          onClick: () => onDeleteConnection?.(conn.id),
+                        },
+                      ],
+                    });
+                  }
                 }}
-                className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer transition-colors group ${
-                  isActive
-                    ? "bg-surface border border-hairline text-white shadow-sm"
-                    : "hover:bg-surface/50 text-gray-400 hover:text-gray-200"
+                className={`w-full h-8 flex items-center justify-between px-2 rounded-md cursor-pointer transition-colors group select-none shrink-0 ${
+                  isConnected
+                    ? "bg-surface border border-hairline text-white shadow-sm opacity-100"
+                    : isConnecting
+                    ? "bg-surface/40 border border-mongo/30 text-emerald-200"
+                    : "hover:bg-surface/30 text-gray-500 hover:text-gray-300 opacity-60 hover:opacity-100 border border-transparent"
                 }`}
               >
-                <div className="flex items-center gap-1.5 truncate">
+                <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2">
                   <div
-                    onClick={(e) => toggleConn(conn.id, e)}
-                    className="p-0.5 hover:text-white"
+                    onClick={(e) => {
+                      if (isConnected) {
+                        toggleConn(conn.id, e);
+                      }
+                    }}
+                    className={`p-0.5 flex items-center justify-center shrink-0 ${
+                      isConnected ? "hover:text-white" : "cursor-default"
+                    }`}
                   >
-                    {isExpanded ? (
-                      <ChevronDown className="w-3 h-3 text-gray-500 shrink-0" />
+                    {isConnected ? (
+                      isExpanded ? (
+                        <ChevronDown className="w-3 h-3 text-gray-400 shrink-0" />
+                      ) : (
+                        <ChevronRight className="w-3 h-3 text-gray-400 shrink-0" />
+                      )
                     ) : (
-                      <ChevronRight className="w-3 h-3 text-gray-500 shrink-0" />
+                      <ChevronRight
+                        className={`w-3 h-3 shrink-0 ${
+                          isConnecting ? "invisible" : "text-gray-600"
+                        }`}
+                      />
                     )}
                   </div>
-                  <Server
-                    className={`w-3.5 h-3.5 shrink-0 ${
-                      isActive ? "text-mongo" : "text-gray-500"
+
+                  {isConnecting ? (
+                    <Loader2 className="w-3.5 h-3.5 text-mongo animate-spin shrink-0" />
+                  ) : (
+                    <Server
+                      className={`w-3.5 h-3.5 shrink-0 ${
+                        isConnected ? "text-mongo" : "text-gray-500"
+                      }`}
+                    />
+                  )}
+
+                  <span
+                    className={`truncate text-xs font-mono leading-none ${
+                      isConnected
+                        ? "font-semibold text-white"
+                        : isConnecting
+                        ? "font-medium text-emerald-200"
+                        : "font-normal text-gray-400 group-hover:text-gray-200"
                     }`}
-                  />
-                  <span className="truncate text-xs font-semibold font-mono">
+                  >
                     {conn.name}
                   </span>
                 </div>
 
                 <span
-                  className={`text-[9px] font-mono px-1 py-0.2 rounded border font-semibold ${badge.bg}`}
+                  className={`text-[9px] font-mono px-1.5 py-0.5 rounded border font-semibold shrink-0 leading-none ${badge.bg} ${
+                    isConnected ? "opacity-100" : "opacity-50 group-hover:opacity-80"
+                  }`}
                 >
                   {badge.label}
                 </span>
               </div>
 
-              {/* Expanded Databases under Active Connection */}
-              {isExpanded && isActive && (
+              {/* Expanded Databases under Connected Connection */}
+              {isExpanded && isConnected && (
                 <div className="pl-3 border-l border-hairline/60 ml-2 space-y-1 pt-0.5">
-                  {filteredHierarchy.map((db) => {
+                  {filteredHierarchy.length > 0 ? (
+                    filteredHierarchy.map((db) => {
                     const isDbExpanded =
                       expandedDbs[db.name] ??
                       (db.name === selectedDb ||
@@ -511,7 +614,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         )}
                       </div>
                     );
-                  })}
+                  })
+                ) : (
+                  <div className="py-1 px-2 text-[11px] text-gray-500 font-mono italic">
+                    {filterText ? "No matching databases" : "No databases found"}
+                  </div>
+                )}
                 </div>
               )}
             </div>
