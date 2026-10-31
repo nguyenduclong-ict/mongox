@@ -89,13 +89,17 @@ Because Mongox is an open-source community application distributed outside platf
 #### macOS ("Mongox is damaged and can't be opened")
 macOS Gatekeeper attaches a quarantine flag to files downloaded directly from the internet. To launch Mongox:
 1. Drag `Mongox.app` into your `/Applications` directory.
-2. Open **Terminal** and run:
+2. Open **Terminal** and run (specify Apple's native binary path):
    ```bash
-   xattr -cr /Applications/Mongox.app
+   sudo /usr/bin/xattr -cr /Applications/Mongox.app
+   ```
+   *Note: If you have Python or Homebrew's `xattr` installed, use `/usr/bin/xattr` explicitly or run:*
+   ```bash
+   xattr -d com.apple.quarantine /Applications/Mongox.app
    ```
 3. Open Mongox from your Applications folder.
 
-*Alternative*: In Finder, right-click (or Control-click) `Mongox.app`, select **Open**, and click **Open** in the confirmation dialog.
+*GUI Alternative*: Go to **System Settings** > **Privacy & Security**, scroll down to the **Security** section, and click **Open Anyway** next to the Mongox prompt.
 
 #### Windows ("Windows protected your PC")
 Windows SmartScreen displays an informational dialog for newly published applications that have not yet accumulated download reputation:
