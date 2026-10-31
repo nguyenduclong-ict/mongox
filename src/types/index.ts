@@ -23,12 +23,29 @@ export interface DownloadProgress {
 // ==========================================
 
 export type Environment = "local" | "development" | "staging" | "production";
+export type ConnectionColor = "none" | "red" | "orange" | "yellow" | "green" | "blue" | "purple";
+export type ConnectionType = "direct" | "replica_set" | "sharded";
 
 export interface ConnectionProfile {
   id: string;
   name: string;
   uri: string;
   environment: Environment;
+  color?: ConnectionColor;
+  connectionType?: ConnectionType;
+  host?: string;
+  port?: number;
+  isSrv?: boolean;
+  readOnly?: boolean;
+  authMechanism?: string;
+  username?: string;
+  authDb?: string;
+  useTls?: boolean;
+  useSsh?: boolean;
+  sshHost?: string;
+  sshPort?: number;
+  sshUser?: string;
+  defaultDb?: string;
   created_at: string;
   updated_at: string;
 }
@@ -96,6 +113,7 @@ export interface BackupConfig {
   database: string;
   collections: string[];
   query_filter?: string;
+  custom_args?: string;
   output_path: string;
   gzip: boolean;
   archive: boolean;
@@ -107,6 +125,7 @@ export interface RestoreConfig {
   input_path: string;
   drop_existing: boolean;
   ns_include?: string;
+  custom_args?: string;
   stop_on_error: boolean;
 }
 
@@ -185,6 +204,8 @@ export interface ImportConfig {
   format: ExportFormat;
   input_path: string;
   conflict_mode: ConflictMode;
+  drop_existing?: boolean;
+  ignore_blanks?: boolean;
 }
 
 export interface ImportPreview {
@@ -201,4 +222,35 @@ export interface JobSummary {
   elapsed_ms: number;
   output_path?: string;
   message: string;
+}
+
+// ==========================================
+// User Management Types
+// ==========================================
+
+export interface MongoUserRole {
+  role: string;
+  db: string;
+}
+
+export interface MongoUser {
+  user: string;
+  db: string;
+  roles: MongoUserRole[];
+}
+
+export interface CreateUserRequest {
+  connection_id: string;
+  database: string;
+  username: string;
+  password: string;
+  roles: MongoUserRole[];
+}
+
+export interface UpdateUserRequest {
+  connection_id: string;
+  database: string;
+  username: string;
+  password?: string;
+  roles?: MongoUserRole[];
 }

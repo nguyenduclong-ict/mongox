@@ -12,15 +12,23 @@ Benchmarking against established database management suites (NoSQLBooster, Mongo
 3. Invoking operational tasks (backup, restore, export, import) through contextual action overlays that preserve active queries and filters.
 
 ### Status
-Ready for Implementation
+Implemented
 
 ## 2. Scope
 
 ### In Scope
-- **Object Explorer Tree**:
-  - Simultaneous multi-connection profile tree rendering (`Cluster > Database > Collections > Indexes/Users`).
+- **Object Explorer Tree & Brand Header**:
+  - Integrated Mongox brand logo and header embedded directly at the top of the sidebar.
+  - Dedicated Settings trigger adjacent to the brand logo.
+  - Dedicated `+` Connection button positioned adjacent to the tree search filter.
+  - Simultaneous multi-connection tree rendering (`Cluster > Database > Collections > Indexes/Users`).
   - Search filter input for dynamic tree filtering.
-  - Native-style contextual menus (right-click) for clusters, databases, and collections.
+  - Native-style contextual menus (right-click) for connections, databases, collections, and table rows.
+  - Complete suppression of browser default context menus.
+- **Native OS File and Directory Dialogs**:
+  - Native Windows/macOS/Linux file and folder selection via Rust `rfd` dialogs (eliminating browser upload prompts).
+- **Common Tabs Primitive**:
+  - Unified `Tabs.tsx` component shared across modals and workspaces with invariant font-weight metrics to eliminate layout jitter.
 - **In-Place Inline Table Cell Editing**:
   - Double-clicking any scalar table cell activates an inline input field.
   - Pressing `Enter` commits updates directly to the database via `updateOne` (with primary key `_id` protected).
@@ -73,10 +81,27 @@ Ready for Implementation
 - **Expected Behavior:**
   - Right-clicking Collection: Open Documents, View Indexes, Analyze Schema, Backup Collection, Export Data, Import Data, Drop Collection.
   - Right-clicking Database: New Collection, Backup Database, Restore Archive, Database Stats, Drop Database.
-  - Right-clicking Connection: Test Ping, Edit Profile, Open Shell, Delete Profile.
+  - Right-clicking Connection: Connect, Create Database, Manage Users, Dump, Restore, Edit Connection, Delete Connection.
 - **Acceptance Criteria:**
   - AC-ERG-04: Displays contextual menu at cursor coordinates upon right-click.
   - AC-ERG-05: Clicking outside or pressing `Escape` dismisses the menu.
+
+### FR-ERG-013: Native File and Folder Dialogs
+- **Description:** Desktop file and folder pickers use native operating system dialogs rather than HTML upload prompts.
+- **Expected Behavior:** Clicking folder pickers invokes `rfd::FileDialog::pick_folder()`, returning the absolute filesystem directory without browser upload confirmation warnings.
+- **Acceptance Criteria:**
+  - AC-ERG-15: Output folder pickers invoke native OS directory selection.
+
+### FR-ERG-014: Common Unified Tab Primitives
+- **Description:** Reusable `Tabs.tsx` component standardizes tab navigation across modals and sessions.
+- **Expected Behavior:** Invariant font metrics (`font-medium`) across active and inactive states eliminate tab width expansion and layout shifts.
+- **Acceptance Criteria:**
+  - AC-ERG-16: Tab switching preserves rigid layout metrics without horizontal pushing.
+
+### FR-ERG-015: Desktop Context Menu Override
+- **Description:** Suppresses the default browser context menu globally to preserve authentic desktop application behavior.
+- **Acceptance Criteria:**
+  - AC-ERG-17: Global right-clicks do not reveal browser developer inspection menus.
 
 ### FR-ERG-003: In-Place Inline Table Cell Editing
 - **Description:** Users can edit scalar document fields directly inside the Table View without opening modal dialogs.

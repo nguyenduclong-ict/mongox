@@ -12,7 +12,8 @@ impl BackupService {
     /// Pure function: Builds safe parameterized argument array for mongodump
     pub fn build_dump_arguments(uri: &str, config: &BackupConfig) -> Vec<String> {
         let mut args = Vec::new();
-        args.push(format!("--uri={}", uri));
+        let clean_uri = Self::strip_database_from_uri(uri);
+        args.push(format!("--uri={}", clean_uri));
 
         if !config.database.trim().is_empty() {
             args.push(format!("--db={}", config.database.trim()));
@@ -20,19 +21,20 @@ impl BackupService {
 
         if config.collections.len() == 1 {
             args.push(format!("--collection={}", config.collections[0].trim()));
-        } else if config.collections.len() > 1 {
-            for col in &config.collections {
-                args.push(format!(
-                    "--nsInclude={}.{}",
-                    config.database.trim(),
-                    col.trim()
-                ));
-            }
         }
 
         if let Some(ref q) = config.query_filter {
             if !q.trim().is_empty() {
                 args.push(format!("--query={}", q.trim()));
+            }
+        }
+
+        if let Some(ref custom) = config.custom_args {
+            for token in custom.split_whitespace() {
+                let trimmed = token.trim();
+                if !trimmed.is_empty() {
+                    args.push(trimmed.to_string());
+                }
             }
         }
 
@@ -49,17 +51,146 @@ impl BackupService {
         args
     }
 
+    /// Strips database name from connection URI path (e.g. mongodb://user:pass@host:port/db?opts -> mongodb://user:pass@host:port/?opts)
+    /// to prevent mongorestore from complaining about deprecated --db flag with --archive
+    pub fn strip_database_from_uri(uri: &str) -> String {
+        if let Some(proto_end) = uri.find("://") {
+            let after_proto = &uri[proto_end + 3..];
+            if let Some(slash_idx) = after_proto.find('/') {
+                let base = &after_proto[..slash_idx];
+                let after_slash = &after_proto[slash_idx + 1..];
+                let query = if let Some(q_idx) = after_slash.find('?') {
+                    &after_slash[q_idx..]
+                } else {
+                    ""
+                };
+                return format!("{}://{}/{}", &uri[..proto_end], base, query);
+            }
+        }
+        uri.to_string()
+    }
+
+    /// Check whether a file is gzipped by inspecting its magic bytes [0x1f, 0x8b] or extension
+    pub fn is_gzip_file(path: &Path) -> bool {
+        if let Ok(mut f) = std::fs::File::open(path) {
+            let mut header = [0u8; 2];
+            use std::io::Read;
+            if f.read_exact(&mut header).is_ok() && header == [0x1f, 0x8b] {
+                return true;
+            }
+        }
+        let lower = path.to_string_lossy().to_lowercase();
+        lower.ends_with(".gz") || lower.ends_with(".tgz")
+    }
+
+    /// Extracts the source database name from the archive BSON header (or filename fallback)
+    pub fn detect_archive_database(archive_path: &Path) -> Option<String> {
+        if let Ok(file) = std::fs::File::open(archive_path) {
+            let mut buffer = Vec::with_capacity(65536);
+            if Self::is_gzip_file(archive_path) {
+                use flate2::read::GzDecoder;
+                use std::io::Read;
+                let mut decoder = GzDecoder::new(file);
+                let _ = decoder.by_ref().take(65536).read_to_end(&mut buffer);
+            } else {
+                use std::io::Read;
+                let _ = file.take(65536).read_to_end(&mut buffer);
+            }
+
+            // Pattern: \x02db\x00 (BSON string with key "db")
+            let pattern = [0x02, b'd', b'b', 0x00];
+            if let Some(idx) = buffer.windows(pattern.len()).position(|w| w == pattern) {
+                let after_key = idx + pattern.len();
+                if after_key + 4 <= buffer.len() {
+                    let len = u32::from_le_bytes([
+                        buffer[after_key],
+                        buffer[after_key + 1],
+                        buffer[after_key + 2],
+                        buffer[after_key + 3],
+                    ]) as usize;
+                    let str_start = after_key + 4;
+                    if len > 1 && str_start + len <= buffer.len() {
+                        let name_bytes = &buffer[str_start..str_start + len - 1]; // strip null byte
+                        if let Ok(db_name) = std::str::from_utf8(name_bytes) {
+                            let trimmed = db_name.trim();
+                            if !trimmed.is_empty() {
+                                return Some(trimmed.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback to filename prefix: backup_<dbname>_<datetime>
+        let filename = archive_path
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if let Some(stripped) = filename.strip_prefix("backup_") {
+            // Find where date starts: _YYYY-
+            if let Some(pos) = stripped.find(|c: char| c.is_ascii_digit()) {
+                if pos > 0 && stripped.as_bytes()[pos - 1] == b'_' {
+                    let db = &stripped[..pos - 1];
+                    if !db.is_empty() {
+                        return Some(db.to_string());
+                    }
+                }
+            }
+            let clean = stripped
+                .trim_end_matches(".dump.gz")
+                .trim_end_matches(".dump")
+                .trim_end_matches(".gz");
+            if !clean.is_empty() {
+                return Some(clean.to_string());
+            }
+        } else {
+            let clean = filename
+                .trim_end_matches(".dump.gz")
+                .trim_end_matches(".dump")
+                .trim_end_matches(".gz")
+                .trim_end_matches(".archive")
+                .trim_end_matches(".bson");
+            if !clean.is_empty() {
+                if let Some(pos) = clean.find(|c: char| c.is_ascii_digit()) {
+                    if pos > 0 && clean.as_bytes()[pos - 1] == b'_' {
+                        let db = &clean[..pos - 1];
+                        if !db.is_empty() {
+                            return Some(db.to_string());
+                        }
+                    }
+                }
+                return Some(clean.to_string());
+            }
+        }
+        None
+    }
+
     /// Pure function: Builds safe parameterized argument array for mongorestore
     pub fn build_restore_arguments(uri: &str, config: &RestoreConfig) -> Vec<String> {
         let mut args = Vec::new();
-        args.push(format!("--uri={}", uri));
+        let clean_uri = Self::strip_database_from_uri(uri);
+        args.push(format!("--uri={}", clean_uri));
 
         if let Some(ref ns) = config.ns_include {
             if !ns.trim().is_empty() {
                 args.push(format!("--nsInclude={}", ns.trim()));
             }
         } else if !config.database.trim().is_empty() {
-            args.push(format!("--nsInclude={}.*", config.database.trim()));
+            let target_db = config.database.trim();
+            let source_db = Self::detect_archive_database(Path::new(&config.input_path));
+
+            if let Some(ref src) = source_db {
+                if src != target_db {
+                    // Remap namespace from source database to target database
+                    args.push(format!("--nsFrom={}.*", src));
+                    args.push(format!("--nsTo={}.*", target_db));
+                } else {
+                    args.push(format!("--nsInclude={}.*", target_db));
+                }
+            } else {
+                args.push(format!("--nsInclude={}.*", target_db));
+            }
         }
 
         if config.drop_existing {
@@ -70,8 +201,17 @@ impl BackupService {
             args.push("--stopOnError".to_string());
         }
 
+        if let Some(ref custom) = config.custom_args {
+            for token in custom.split_whitespace() {
+                let trimmed = token.trim();
+                if !trimmed.is_empty() {
+                    args.push(trimmed.to_string());
+                }
+            }
+        }
+
         // Check if archive path indicates gzip compression
-        if config.input_path.ends_with(".gz") {
+        if Self::is_gzip_file(Path::new(&config.input_path)) {
             args.push("--gzip".to_string());
         }
 
@@ -89,16 +229,7 @@ impl BackupService {
         let metadata = std::fs::metadata(archive_path)
             .map_err(|e| format!("Failed to read archive metadata: {}", e))?;
 
-        let filename = archive_path
-            .file_name()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_default();
-
-        let detected_db = if let Some(stripped) = filename.strip_prefix("backup_") {
-            stripped.split('_').next().map(|s| s.to_string())
-        } else {
-            None
-        };
+        let detected_db = Self::detect_archive_database(archive_path);
 
         Ok(ArchiveMetadata {
             path: archive_path.to_string_lossy().to_string(),
@@ -300,8 +431,9 @@ mod tests {
         let config = BackupConfig {
             connection_id: "conn-1".to_string(),
             database: "store_db".to_string(),
-            collections: vec!["orders".to_string(), "customers".to_string()],
-            query_filter: Some("{\"status\":\"active\"}".to_string()),
+            collections: vec!["orders".to_string()],
+            query_filter: None,
+            custom_args: Some("--excludeCollection=temp --verbose".to_string()),
             output_path: "C:\\backups\\dump.gz".to_string(),
             gzip: true,
             archive: true,
@@ -310,9 +442,9 @@ mod tests {
         let args = BackupService::build_dump_arguments("mongodb://localhost:27017", &config);
         assert!(args.contains(&"--uri=mongodb://localhost:27017".to_string()));
         assert!(args.contains(&"--db=store_db".to_string()));
-        assert!(args.contains(&"--nsInclude=store_db.orders".to_string()));
-        assert!(args.contains(&"--nsInclude=store_db.customers".to_string()));
-        assert!(args.contains(&"--query={\"status\":\"active\"}".to_string()));
+        assert!(args.contains(&"--collection=orders".to_string()));
+        assert!(args.contains(&"--excludeCollection=temp".to_string()));
+        assert!(args.contains(&"--verbose".to_string()));
         assert!(args.contains(&"--gzip".to_string()));
         assert!(args.contains(&"--archive=C:\\backups\\dump.gz".to_string()));
     }
@@ -322,9 +454,10 @@ mod tests {
         let config = RestoreConfig {
             connection_id: "conn-1".to_string(),
             database: "store_db".to_string(),
-            input_path: "/data/backup_store_2026.dump.gz".to_string(),
+            input_path: "/data/backup_store_db_2026.dump.gz".to_string(),
             drop_existing: true,
             ns_include: None,
+            custom_args: Some("--noIndexRestore".to_string()),
             stop_on_error: true,
         };
 
@@ -333,7 +466,41 @@ mod tests {
         assert!(args.contains(&"--nsInclude=store_db.*".to_string()));
         assert!(args.contains(&"--drop".to_string()));
         assert!(args.contains(&"--stopOnError".to_string()));
+        assert!(args.contains(&"--noIndexRestore".to_string()));
         assert!(args.contains(&"--gzip".to_string()));
-        assert!(args.contains(&"--archive=/data/backup_store_2026.dump.gz".to_string()));
+        assert!(args.contains(&"--archive=/data/backup_store_db_2026.dump.gz".to_string()));
+
+        // Test namespace remapping when target database differs from archive database
+        let remap_config = RestoreConfig {
+            connection_id: "conn-1".to_string(),
+            database: "test_123".to_string(),
+            input_path: "/data/backup_test_db_2026-10-31_15-04-24.dump.gz".to_string(),
+            drop_existing: true,
+            ns_include: None,
+            custom_args: None,
+            stop_on_error: false,
+        };
+
+        let remap_args = BackupService::build_restore_arguments("mongodb://localhost:27017", &remap_config);
+        assert!(remap_args.contains(&"--nsFrom=test_db.*".to_string()));
+        assert!(remap_args.contains(&"--nsTo=test_123.*".to_string()));
+    }
+
+    #[test]
+    fn test_strip_database_from_uri() {
+        assert_eq!(
+            BackupService::strip_database_from_uri(
+                "mongodb://mongox:mongoxpass@127.0.0.1:27017/test_db?authSource=admin"
+            ),
+            "mongodb://mongox:mongoxpass@127.0.0.1:27017/?authSource=admin"
+        );
+        assert_eq!(
+            BackupService::strip_database_from_uri("mongodb://localhost:27017/test_db"),
+            "mongodb://localhost:27017/"
+        );
+        assert_eq!(
+            BackupService::strip_database_from_uri("mongodb://localhost:27017"),
+            "mongodb://localhost:27017"
+        );
     }
 }

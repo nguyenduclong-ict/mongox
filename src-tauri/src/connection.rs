@@ -8,7 +8,9 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 use uuid::Uuid;
 
-use crate::models::{ConnectionProfile, DatabaseInfo, Environment, PingResult};
+use crate::models::{
+    ConnectionProfile, CreateUserRequest, DatabaseInfo, MongoUser, PingResult, UpdateUserRequest,
+};
 use crate::process_runner::create_hidden_command;
 
 pub struct ConnectionManager {
@@ -27,20 +29,6 @@ impl ConnectionManager {
                     profiles = parsed;
                 }
             }
-        }
-
-        // Seed with a default Localhost profile if empty
-        if profiles.is_empty() {
-            let default_profile = ConnectionProfile {
-                id: Uuid::new_v4().to_string(),
-                name: "Local MongoDB".to_string(),
-                uri: "mongodb://localhost:27017".to_string(),
-                environment: Environment::Local,
-                created_at: Utc::now().to_rfc3339(),
-                updated_at: Utc::now().to_rfc3339(),
-            };
-            profiles.push(default_profile);
-            let _ = Self::persist_to_disk(&storage_path, &profiles);
         }
 
         Ok(Self {
@@ -247,7 +235,7 @@ impl ConnectionManager {
                             });
                             return {
                                 name: d.name,
-                                size_on_disk: d.sizeOnDisk || 0,
+                                size_on_disk: Number(d.sizeOnDisk) || 0,
                                 empty: d.empty || false,
                                 collections: colls
                             };
@@ -305,6 +293,216 @@ impl ConnectionManager {
             "mongosh engine is not available. Please ensure it is installed via Settings."
                 .to_string(),
         )
+    }
+
+    fn resolve_mongosh_binary(mongosh_path: Option<&Path>) -> PathBuf {
+        if let Some(p) = mongosh_path {
+            if p.is_file() {
+                return p.to_path_buf();
+            }
+        }
+        PathBuf::from("mongosh")
+    }
+
+    /// List users for a specific database
+    pub async fn list_database_users(
+        uri: &str,
+        database: &str,
+        mongosh_path: Option<&Path>,
+    ) -> Result<Vec<MongoUser>, String> {
+        let eval_script = format!(
+            r#"
+            try {{
+                const targetDb = db.getSiblingDB({:?});
+                const res = targetDb.runCommand({{ usersInfo: 1 }});
+                const users = (res.users || []).map(u => ({{
+                    user: u.user,
+                    db: u.db,
+                    roles: (u.roles || []).map(r => ({{ role: r.role, db: r.db }}))
+                }}));
+                print("MONGOUSERS_RESULT:" + JSON.stringify(users));
+            }} catch(e) {{
+                print("MONGOUSERS_RESULT:ERROR:" + e.message);
+            }}
+            "#,
+            database
+        );
+
+        let bin_path = Self::resolve_mongosh_binary(mongosh_path);
+        let output = create_hidden_command(&bin_path)
+            .arg(uri)
+            .arg("--quiet")
+            .arg("--norc")
+            .arg("--eval")
+            .arg(&eval_script)
+            .output()
+            .await;
+
+        if let Ok(out) = output {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            for line in stdout.lines() {
+                if let Some(json_str) = line.strip_prefix("MONGOUSERS_RESULT:") {
+                    if let Some(err_msg) = json_str.strip_prefix("ERROR:") {
+                        return Err(format!("MongoDB error: {}", err_msg));
+                    }
+                    if let Ok(users) = serde_json::from_str::<Vec<MongoUser>>(json_str) {
+                        return Ok(users);
+                    }
+                }
+            }
+        }
+
+        Err("Failed to list users via mongosh".to_string())
+    }
+
+    /// Create user on target database
+    pub async fn create_database_user(
+        uri: &str,
+        database: &str,
+        req: &CreateUserRequest,
+        mongosh_path: Option<&Path>,
+    ) -> Result<(), String> {
+        let roles_json = serde_json::to_string(&req.roles).unwrap_or_else(|_| "[]".to_string());
+        let eval_script = format!(
+            r#"
+            try {{
+                const targetDb = db.getSiblingDB({:?});
+                targetDb.createUser({{
+                    user: {:?},
+                    pwd: {:?},
+                    roles: {}
+                }});
+                print("MONGOUSER_OP_OK");
+            }} catch(e) {{
+                print("MONGOUSER_OP_ERROR:" + e.message);
+            }}
+            "#,
+            database, req.username, req.password, roles_json
+        );
+
+        let bin_path = Self::resolve_mongosh_binary(mongosh_path);
+        let output = create_hidden_command(&bin_path)
+            .arg(uri)
+            .arg("--quiet")
+            .arg("--norc")
+            .arg("--eval")
+            .arg(&eval_script)
+            .output()
+            .await;
+
+        if let Ok(out) = output {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            for line in stdout.lines() {
+                if line.contains("MONGOUSER_OP_OK") {
+                    return Ok(());
+                }
+                if let Some(err_msg) = line.strip_prefix("MONGOUSER_OP_ERROR:") {
+                    return Err(err_msg.to_string());
+                }
+            }
+        }
+
+        Err("Failed to execute createUser via mongosh".to_string())
+    }
+
+    /// Update user on target database
+    pub async fn update_database_user(
+        uri: &str,
+        database: &str,
+        username: &str,
+        req: &UpdateUserRequest,
+        mongosh_path: Option<&Path>,
+    ) -> Result<(), String> {
+        let mut updates = Vec::new();
+        if let Some(ref pwd) = req.password {
+            updates.push(format!("pwd: {:?}", pwd));
+        }
+        if let Some(ref roles) = req.roles {
+            let roles_json = serde_json::to_string(roles).unwrap_or_else(|_| "[]".to_string());
+            updates.push(format!("roles: {}", roles_json));
+        }
+        let update_body = updates.join(", ");
+        let eval_script = format!(
+            r#"
+            try {{
+                const targetDb = db.getSiblingDB({:?});
+                targetDb.updateUser({:?}, {{ {} }});
+                print("MONGOUSER_OP_OK");
+            }} catch(e) {{
+                print("MONGOUSER_OP_ERROR:" + e.message);
+            }}
+            "#,
+            database, username, update_body
+        );
+
+        let bin_path = Self::resolve_mongosh_binary(mongosh_path);
+        let output = create_hidden_command(&bin_path)
+            .arg(uri)
+            .arg("--quiet")
+            .arg("--norc")
+            .arg("--eval")
+            .arg(&eval_script)
+            .output()
+            .await;
+
+        if let Ok(out) = output {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            for line in stdout.lines() {
+                if line.contains("MONGOUSER_OP_OK") {
+                    return Ok(());
+                }
+                if let Some(err_msg) = line.strip_prefix("MONGOUSER_OP_ERROR:") {
+                    return Err(err_msg.to_string());
+                }
+            }
+        }
+
+        Err("Failed to execute updateUser via mongosh".to_string())
+    }
+
+    /// Drop user from target database
+    pub async fn drop_database_user(
+        uri: &str,
+        database: &str,
+        username: &str,
+        mongosh_path: Option<&Path>,
+    ) -> Result<(), String> {
+        let eval_script = format!(
+            r#"
+            try {{
+                const targetDb = db.getSiblingDB({:?});
+                targetDb.dropUser({:?});
+                print("MONGOUSER_OP_OK");
+            }} catch(e) {{
+                print("MONGOUSER_OP_ERROR:" + e.message);
+            }}
+            "#,
+            database, username
+        );
+
+        let bin_path = Self::resolve_mongosh_binary(mongosh_path);
+        let output = create_hidden_command(&bin_path)
+            .arg(uri)
+            .arg("--quiet")
+            .arg("--norc")
+            .arg("--eval")
+            .arg(&eval_script)
+            .output()
+            .await;
+
+        if let Ok(out) = output {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            for line in stdout.lines() {
+                if line.contains("MONGOUSER_OP_OK") {
+                    return Ok(());
+                }
+                if let Some(err_msg) = line.strip_prefix("MONGOUSER_OP_ERROR:") {
+                    return Err(err_msg.to_string());
+                }
+            }
+        }
+
+        Err("Failed to execute dropUser via mongosh".to_string())
     }
 
     /// Extract host and port from MongoDB URI
@@ -377,6 +575,7 @@ impl ConnectionManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::Environment;
     use tempfile::tempdir;
 
     #[test]
@@ -417,7 +616,7 @@ mod tests {
         let manager = ConnectionManager::new(dir.path()).unwrap();
 
         let initial = manager.list_profiles();
-        assert!(!initial.is_empty());
+        assert!(initial.is_empty());
 
         let new_profile = ConnectionProfile {
             id: String::new(),
@@ -426,6 +625,7 @@ mod tests {
             environment: Environment::Staging,
             created_at: String::new(),
             updated_at: String::new(),
+            ..Default::default()
         };
 
         let saved = manager.save_profile(new_profile).unwrap();

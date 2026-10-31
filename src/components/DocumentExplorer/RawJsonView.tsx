@@ -28,8 +28,8 @@ export const RawJsonView: React.FC<RawJsonViewProps> = ({ documents }) => {
         </button>
       </div>
 
-      <pre className="flex-1 p-4 overflow-auto font-mono text-xs text-gray-200 leading-relaxed selection:bg-mongo/30">
-        <code>{jsonString}</code>
+      <pre className="flex-1 p-4 overflow-auto font-mono text-xs text-gray-200 leading-relaxed selection:bg-mongo/30 select-text cursor-text">
+        <code className="select-text">{jsonString}</code>
       </pre>
     </div>
   );

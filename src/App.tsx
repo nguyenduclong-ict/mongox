@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
 import { CollectionWorkspace } from "./components/CollectionWorkspace/CollectionWorkspace";
 import { ConnectionModal } from "./components/ConnectionModal";
@@ -8,6 +7,8 @@ import { BackupModal } from "./components/BackupRestore/BackupModal";
 import { RestoreModal } from "./components/BackupRestore/RestoreModal";
 import { ExportModal } from "./components/ExportImport/ExportModal";
 import { ImportModal } from "./components/ExportImport/ImportModal";
+import { UserManagementModal } from "./components/UserManagement/UserManagementModal";
+import { CreateDatabaseModal } from "./components/CreateDatabaseModal";
 import { ProductionGuardModal } from "./components/ProductionGuardModal";
 import { ProvisioningModal } from "./components/ProvisioningModal";
 import { useProvisioning } from "./hooks/useProvisioning";
@@ -26,8 +27,10 @@ import {
   runImport,
   previewImportFile,
   inspectArchive,
+  insertDocument,
 } from "./services/tauri";
-import { Database, Plus, Sparkles, Layers, FileText, X } from "lucide-react";
+import { ToastContainer, ToastMessage } from "./components/ui/Toast";
+import { Database, Plus, Layers, FileText, X } from "lucide-react";
 
 interface WorkspaceTab {
   id: string;
@@ -70,6 +73,28 @@ export const App: React.FC = () => {
     col: string;
   }>({ isOpen: false, db: "", col: "" });
 
+  const [userMgmtModal, setUserMgmtModal] = useState<{
+    isOpen: boolean;
+    db: string;
+  }>({ isOpen: false, db: "" });
+
+  // Floating Toast Notifications
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const addToast = (
+    message: string,
+    type: "info" | "success" | "loading" | "error" = "info",
+    duration = 4000
+  ) => {
+    const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    setToasts((prev) => [...prev, { id, type, message, duration }]);
+    return id;
+  };
+
+  const dismissToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
   // Production Guard State
   const [guardState, setGuardState] = useState<{
     isOpen: boolean;
@@ -83,13 +108,19 @@ export const App: React.FC = () => {
     onConfirmed: async () => {},
   });
 
+  const [createDbModal, setCreateDbModal] = useState<{
+    isOpen: boolean;
+    conn: ConnectionProfile | null;
+  }>({
+    isOpen: false,
+    conn: null,
+  });
+
   const {
     tools,
-    loading: toolsLoading,
     isDownloading,
     activeDownload,
     versionOutputs,
-    refreshTools,
     ensureTool,
     checkVersion,
   } = useProvisioning();
@@ -105,12 +136,21 @@ export const App: React.FC = () => {
     setSelectedCollection,
     selectConnection,
     saveProfile,
+    removeProfile,
     testPing,
     reloadHierarchy,
   } = useConnection();
 
-  const activeCount = tools.filter((t) => t.is_available).length;
   const isProduction = activeConnection?.environment === "production";
+
+  // Disable browser default context menu across the desktop application
+  React.useEffect(() => {
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("contextmenu", handleContextMenu);
+    return () => window.removeEventListener("contextmenu", handleContextMenu);
+  }, []);
 
   // Tab Handlers
   const handleSelectCollection = (db: string, col: string) => {
@@ -181,13 +221,65 @@ export const App: React.FC = () => {
 
   // Action Wizard Runners
   const handleRunBackup = async (config: BackupConfig) => {
-    await runBackup(config);
+    try {
+      const res = await runBackup(config);
+      const target =
+        config.collections && config.collections.length > 0
+          ? `${config.database} (${config.collections.join(", ")})`
+          : config.database;
+      addToast(
+        res.message || `Database dump completed successfully for ${target}!`,
+        "success"
+      );
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : String(err), "error", 5000);
+      throw err;
+    }
+  };
+
+  const [collectionRefreshKey, setCollectionRefreshKey] = useState<number>(0);
+
+  const handleRefreshConnection = async (_connId?: string) => {
+    try {
+      await reloadHierarchy();
+      addToast("Connection hierarchy refreshed", "info", 2000);
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : String(err), "error");
+    }
+  };
+
+  const handleRefreshDatabase = async (dbName: string) => {
+    try {
+      await reloadHierarchy();
+      addToast(`Database "${dbName}" refreshed`, "info", 2000);
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : String(err), "error");
+    }
+  };
+
+  const handleRefreshCollection = async (dbName: string, colName: string) => {
+    try {
+      await reloadHierarchy();
+      setCollectionRefreshKey((prev) => prev + 1);
+      addToast(`Collection "${dbName}.${colName}" refreshed`, "info", 2000);
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : String(err), "error");
+    }
   };
 
   const handleRunRestore = async (config: RestoreConfig) => {
     const execute = async () => {
-      await runRestore(config);
-      reloadHierarchy();
+      try {
+        const res = await runRestore(config);
+        addToast(
+          res.message || `Restore completed successfully into ${config.database}!`,
+          "success"
+        );
+        await reloadHierarchy();
+      } catch (err) {
+        addToast(err instanceof Error ? err.message : String(err), "error", 5000);
+        throw err;
+      }
     };
 
     if (config.drop_existing && isProduction) {
@@ -202,13 +294,31 @@ export const App: React.FC = () => {
   };
 
   const handleRunExport = async (config: ExportConfig) => {
-    await runExport(config);
+    try {
+      const res = await runExport(config);
+      addToast(
+        res.message || `Export completed successfully for ${config.collection}!`,
+        "success"
+      );
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : String(err), "error", 5000);
+      throw err;
+    }
   };
 
   const handleRunImport = async (config: ImportConfig) => {
     const execute = async () => {
-      await runImport(config);
-      reloadHierarchy();
+      try {
+        const res = await runImport(config);
+        addToast(
+          res.message || `Import completed successfully for ${config.collection}!`,
+          "success"
+        );
+        reloadHierarchy();
+      } catch (err) {
+        addToast(err instanceof Error ? err.message : String(err), "error", 5000);
+        throw err;
+      }
     };
 
     if (isProduction) {
@@ -222,31 +332,34 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleCreateDatabase = async (dbName: string, colName: string) => {
+    const conn = createDbModal.conn || activeConnection;
+    if (!conn) return;
+    try {
+      await insertDocument(conn.id, dbName, colName, {
+        description: "Initial record created with database",
+        createdAt: new Date().toISOString(),
+      });
+      await reloadHierarchy();
+      setSelectedDb(dbName);
+      setSelectedCollection(colName);
+      addToast(`Database '${dbName}' created successfully!`, "success");
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : String(err), "error", 5000);
+      throw err;
+    }
+  };
+
   // Available collections list for active database
-  const activeDbInfo = hierarchy.find((d) => d.name === (selectedDb || backupModal.db));
+  const targetDbName = backupModal.db || selectedDb;
+  const activeDbInfo = hierarchy.find((d) => d.name === targetDbName);
   const availableCollections = activeDbInfo
     ? activeDbInfo.collections.map((c) => c.name)
     : [];
 
   return (
     <div className="h-screen w-screen flex flex-col bg-canvas text-gray-200 select-none overflow-hidden font-sans">
-      {/* Top Application Header */}
-      <Header
-        onRefresh={() => {
-          refreshTools();
-          reloadHierarchy();
-        }}
-        isLoading={toolsLoading}
-        activeCount={activeCount}
-        totalCount={tools.length}
-        activeConnection={activeConnection}
-        activeDatabase={selectedDb}
-        activeCollection={selectedCollection}
-        latencyMs={pingResult?.latency_ms}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-      />
-
-      {/* Main Layout: Object Explorer Sidebar + Collection Workspace */}
+      {/* Main Layout: Sidebar + Workspace */}
       <div className="flex-1 flex overflow-hidden">
         <Sidebar
           connections={connections}
@@ -268,6 +381,16 @@ export const App: React.FC = () => {
           onOpenImportModal={(db, col) =>
             setImportModal({ isOpen: true, db, col })
           }
+          onOpenUserManagement={(db) => setUserMgmtModal({ isOpen: true, db })}
+          onCreateDatabase={(conn) => setCreateDbModal({ isOpen: true, conn })}
+          onRefreshConnection={handleRefreshConnection}
+          onRefreshDatabase={handleRefreshDatabase}
+          onRefreshCollection={handleRefreshCollection}
+          onEditConnection={(conn) => {
+            setEditingConn(conn);
+            setIsConnModalOpen(true);
+          }}
+          onDeleteConnection={(id) => removeProfile(id)}
         />
 
         <main className="flex-1 flex flex-col min-w-0 bg-canvas overflow-hidden">
@@ -279,6 +402,7 @@ export const App: React.FC = () => {
                 return (
                   <div
                     key={tab.id}
+                    data-testid="workspace-tab"
                     onClick={() => handleSwitchTab(tab)}
                     className={`h-7 px-2.5 rounded flex items-center gap-2 text-xs font-mono cursor-pointer transition-colors ${
                       isActive
@@ -310,6 +434,7 @@ export const App: React.FC = () => {
 
           {selectedDb && selectedCollection ? (
             <CollectionWorkspace
+              key={`${selectedDb}.${selectedCollection}.${collectionRefreshKey}`}
               connectionId={activeConnection?.id || null}
               database={selectedDb}
               collection={selectedCollection}
@@ -317,6 +442,9 @@ export const App: React.FC = () => {
               onRequireProductionConfirm={triggerProductionGuard}
               onOpenBackup={(db, col) =>
                 setBackupModal({ isOpen: true, db, col })
+              }
+              onOpenRestore={(db) =>
+                setRestoreModal({ isOpen: true, db })
               }
               onOpenExport={(db, col) =>
                 setExportModal({ isOpen: true, db, col })
@@ -348,14 +476,6 @@ export const App: React.FC = () => {
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>New Connection</span>
-                </button>
-
-                <button
-                  onClick={() => setIsSettingsOpen(true)}
-                  className="px-3 py-1.5 rounded-md bg-surface hover:bg-surface-hover text-xs font-medium text-gray-300 border border-hairline flex items-center gap-1.5 transition-colors"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-mongo" />
-                  <span>Settings & CLI Tools</span>
                 </button>
               </div>
 
@@ -448,9 +568,16 @@ export const App: React.FC = () => {
           setBackupModal((prev) => ({ ...prev, isOpen: false }))
         }
         onRunBackup={handleRunBackup}
+        onEnsureTool={ensureTool}
         connectionId={activeConnection?.id || ""}
         defaultDb={backupModal.db || selectedDb || "store_db"}
-        availableCollections={availableCollections}
+        availableCollections={
+          hierarchy
+            .find((d) => d.name === (backupModal.db || selectedDb))
+            ?.collections.map((c) => c.name) || availableCollections
+        }
+        availableDatabases={hierarchy.map((d) => d.name)}
+        onDatabaseChange={(db) => setBackupModal((prev) => ({ ...prev, db }))}
       />
 
       {/* Restore Action Modal with File Explorer integration */}
@@ -461,6 +588,7 @@ export const App: React.FC = () => {
         }
         onRunRestore={handleRunRestore}
         onInspectArchive={inspectArchive}
+        onEnsureTool={ensureTool}
         connectionId={activeConnection?.id || ""}
         defaultDb={restoreModal.db || selectedDb || "store_db"}
         isProduction={isProduction}
@@ -473,6 +601,7 @@ export const App: React.FC = () => {
           setExportModal((prev) => ({ ...prev, isOpen: false }))
         }
         onRunExport={handleRunExport}
+        onEnsureTool={ensureTool}
         connectionId={activeConnection?.id || ""}
         database={exportModal.db || selectedDb || "store_db"}
         collection={exportModal.col || selectedCollection || "orders"}
@@ -486,10 +615,29 @@ export const App: React.FC = () => {
         }
         onRunImport={handleRunImport}
         onPreviewFile={previewImportFile}
+        onEnsureTool={ensureTool}
         connectionId={activeConnection?.id || ""}
         database={importModal.db || selectedDb || "store_db"}
         collection={importModal.col || selectedCollection || "orders"}
         isProduction={isProduction}
+      />
+
+      {/* User Management Modal */}
+      <UserManagementModal
+        isOpen={userMgmtModal.isOpen}
+        onClose={() => setUserMgmtModal({ isOpen: false, db: "" })}
+        connectionId={activeConnection?.id || ""}
+        database={userMgmtModal.db || selectedDb || "admin"}
+        availableDatabases={hierarchy.map((d) => d.name)}
+        isProduction={isProduction}
+      />
+
+      {/* Create Database Modal */}
+      <CreateDatabaseModal
+        isOpen={createDbModal.isOpen}
+        onClose={() => setCreateDbModal({ isOpen: false, conn: null })}
+        connectionName={createDbModal.conn?.name || activeConnection?.name || "MongoDB"}
+        onCreate={handleCreateDatabase}
       />
 
       {/* Production Guard Multi-Step Confirmation Modal */}
@@ -505,6 +653,9 @@ export const App: React.FC = () => {
 
       {/* Provisioning Progress Modal */}
       <ProvisioningModal isOpen={isDownloading} progress={activeDownload} />
+
+      {/* Global Floating Toast Feedback */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 };

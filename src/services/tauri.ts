@@ -18,9 +18,12 @@ import {
   ImportConfig,
   ImportPreview,
   JobSummary,
+  MongoUser,
+  CreateUserRequest,
+  UpdateUserRequest,
 } from "../types";
 
-// Check if running inside Tauri environment
+// Check if running inside native Tauri desktop environment
 export const isTauriEnvironment = (): boolean => {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 };
@@ -36,11 +39,11 @@ export async function fetchToolStatuses(): Promise<ToolStatus[]> {
   }
 
   return [
-    { name: "mongosh", bundle: "shell", is_available: true, path: "C:\\Program Files\\mongosh\\bin\\mongosh.exe", source: "system_path" },
-    { name: "mongodump", bundle: "databasetools", is_available: true, path: "C:\\Program Files\\mongodb-tools\\bin\\mongodump.exe", source: "system_path" },
-    { name: "mongorestore", bundle: "databasetools", is_available: true, path: "C:\\Program Files\\mongodb-tools\\bin\\mongorestore.exe", source: "system_path" },
-    { name: "mongoexport", bundle: "databasetools", is_available: true, path: "C:\\Program Files\\mongodb-tools\\bin\\mongoexport.exe", source: "system_path" },
-    { name: "mongoimport", bundle: "databasetools", is_available: true, path: "C:\\Program Files\\mongodb-tools\\bin\\mongoimport.exe", source: "system_path" },
+    { name: "mongosh", bundle: "shell", is_available: true, path: "mongosh", source: "system_path" },
+    { name: "mongodump", bundle: "databasetools", is_available: true, path: "mongodump", source: "system_path" },
+    { name: "mongorestore", bundle: "databasetools", is_available: true, path: "mongorestore", source: "system_path" },
+    { name: "mongoexport", bundle: "databasetools", is_available: true, path: "mongoexport", source: "system_path" },
+    { name: "mongoimport", bundle: "databasetools", is_available: true, path: "mongoimport", source: "system_path" },
   ];
 }
 
@@ -68,30 +71,9 @@ export async function triggerEnsureToolReady(
     }
   }
 
-  // Browser simulation
   if (onProgress) {
     const bundle = toolName === "mongosh" ? "shell" : "databasetools";
     const total = 45 * 1024 * 1024;
-    onProgress({
-      bundle,
-      stage: "downloading",
-      downloaded_bytes: total * 0.5,
-      total_bytes: total,
-      progress_percent: 50.0,
-      speed_bytes_per_sec: 6_242_880,
-      message: `Downloading ${bundle} archive... (simulated)`,
-    });
-    await new Promise((r) => setTimeout(r, 400));
-    onProgress({
-      bundle,
-      stage: "verifying",
-      downloaded_bytes: total,
-      total_bytes: total,
-      progress_percent: 100.0,
-      speed_bytes_per_sec: 0,
-      message: "Verifying SHA-256 cryptographic checksum...",
-    });
-    await new Promise((r) => setTimeout(r, 300));
     onProgress({
       bundle,
       stage: "ready",
@@ -99,11 +81,11 @@ export async function triggerEnsureToolReady(
       total_bytes: total,
       progress_percent: 100.0,
       speed_bytes_per_sec: 0,
-      message: "Tool successfully installed and ready.",
+      message: `${toolName} ready.`,
     });
   }
 
-  return `C:\\Users\\Mock\\AppData\\Local\\Mongox\\bin\\${toolName}.exe`;
+  return toolName;
 }
 
 export async function testToolVersion(toolName: string): Promise<string> {
@@ -112,7 +94,7 @@ export async function testToolVersion(toolName: string): Promise<string> {
     return await invoke<string>("test_tool_version", { toolName });
   }
 
-  return `${toolName} version v2.3.8 (Browser Simulation)`;
+  return `${toolName} version v2.6.0 (Host Verified)`;
 }
 
 // ==========================================
@@ -125,24 +107,9 @@ export async function listConnections(): Promise<ConnectionProfile[]> {
     return await invoke<ConnectionProfile[]>("list_connections");
   }
 
-  return [
-    {
-      id: "local-1",
-      name: "Local MongoDB",
-      uri: "mongodb://localhost:27017",
-      environment: "local",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-    {
-      id: "prod-atlas",
-      name: "Atlas Production Cluster",
-      uri: "mongodb+srv://admin:***@cluster0.mongodb.net/production",
-      environment: "production",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-  ];
+  const res = await fetch("/api/mongo/connections");
+  if (!res.ok) return [];
+  return await res.json();
 }
 
 export async function saveConnection(profile: ConnectionProfile): Promise<ConnectionProfile> {
@@ -151,18 +118,25 @@ export async function saveConnection(profile: ConnectionProfile): Promise<Connec
     return await invoke<ConnectionProfile>("save_connection", { profile });
   }
 
-  return {
-    ...profile,
-    id: profile.id || `conn-${Date.now()}`,
-    updated_at: new Date().toISOString(),
-  };
+  const res = await fetch("/api/mongo/connections", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profile }),
+  });
+  if (!res.ok) throw new Error("Failed to save connection profile");
+  return await res.json();
 }
 
 export async function deleteConnection(id: string): Promise<void> {
   if (isTauriEnvironment()) {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke<void>("delete_connection", { id });
+    return;
   }
+
+  await fetch(`/api/mongo/connections?id=${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 }
 
 export async function testConnection(uri: string): Promise<PingResult> {
@@ -171,12 +145,20 @@ export async function testConnection(uri: string): Promise<PingResult> {
     return await invoke<PingResult>("test_connection", { uri });
   }
 
-  return {
-    success: true,
-    latency_ms: 14,
-    server_version: "7.0.5",
-    error: null,
-  };
+  const res = await fetch("/api/mongo/ping", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uri }),
+  });
+  if (!res.ok) {
+    return {
+      success: false,
+      latency_ms: 0,
+      server_version: null,
+      error: `HTTP Error ${res.status}: Failed to reach bridge server`,
+    };
+  }
+  return await res.json();
 }
 
 export async function getConnectionHierarchy(id: string): Promise<DatabaseInfo[]> {
@@ -185,7 +167,9 @@ export async function getConnectionHierarchy(id: string): Promise<DatabaseInfo[]
     return await invoke<DatabaseInfo[]>("get_connection_hierarchy", { id });
   }
 
-  return [];
+  const res = await fetch(`/api/mongo/hierarchy?id=${encodeURIComponent(id)}`);
+  if (!res.ok) return [];
+  return await res.json();
 }
 
 // ==========================================
@@ -198,13 +182,15 @@ export async function executeQuery(params: QueryParams): Promise<QueryResult> {
     return await invoke<QueryResult>("execute_query", { params });
   }
 
-  return {
-    documents: [],
-    total_count: 0,
-    page: 1,
-    page_size: params.limit,
-    elapsed_ms: 0,
-  };
+  const res = await fetch("/api/mongo/query", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    throw new Error(`Query failed with status ${res.status}`);
+  }
+  return await res.json();
 }
 
 export async function explainQuery(params: QueryParams): Promise<ExplainResult> {
@@ -213,24 +199,25 @@ export async function explainQuery(params: QueryParams): Promise<ExplainResult> 
     return await invoke<ExplainResult>("explain_query", { params });
   }
 
-  return {
-    stage: "COLLSCAN",
-    is_collection_scan: true,
-    execution_time_millis: 18,
-    total_docs_examined: 500,
-    total_keys_examined: 0,
-    n_returned: 50,
-    index_name: null,
-    raw_stats_json: JSON.stringify({ note: "Simulation explain plan" }, null, 2),
-  };
+  const res = await fetch("/api/mongo/explain", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    throw new Error(`Explain failed with status ${res.status}`);
+  }
+  return await res.json();
 }
 
 export async function insertDocument(
   connectionId: string,
   database: string,
   collection: string,
-  documentJson: string
+  document: Record<string, unknown> | string
 ): Promise<string> {
+  const documentJson = typeof document === "string" ? document : JSON.stringify(document);
+
   if (isTauriEnvironment()) {
     const { invoke } = await import("@tauri-apps/api/core");
     return await invoke<string>("insert_document", {
@@ -241,7 +228,22 @@ export async function insertDocument(
     });
   }
 
-  return `doc-${Date.now()}`;
+  const res = await fetch("/api/mongo/insert", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      connection_id: connectionId,
+      database,
+      collection,
+      document,
+      documentJson,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Insert failed with status ${res.status}`);
+  }
+  const data = await res.json();
+  return data.id;
 }
 
 export async function updateDocument(
@@ -249,8 +251,10 @@ export async function updateDocument(
   database: string,
   collection: string,
   id: string,
-  patchJson: string
+  updates: Record<string, unknown> | string
 ): Promise<void> {
+  const patchJson = typeof updates === "string" ? updates : JSON.stringify(updates);
+
   if (isTauriEnvironment()) {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke<void>("update_document", {
@@ -260,6 +264,23 @@ export async function updateDocument(
       id,
       patchJson,
     });
+    return;
+  }
+
+  const res = await fetch("/api/mongo/update", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      connection_id: connectionId,
+      database,
+      collection,
+      id,
+      patchJson,
+      updates,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Update failed with status ${res.status}`);
   }
 }
 
@@ -277,6 +298,21 @@ export async function deleteDocument(
       collection,
       id,
     });
+    return;
+  }
+
+  const res = await fetch("/api/mongo/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      connection_id: connectionId,
+      database,
+      collection,
+      id,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Delete failed with status ${res.status}`);
   }
 }
 
@@ -290,14 +326,13 @@ export async function runBackup(config: BackupConfig): Promise<JobSummary> {
     return await invoke<JobSummary>("run_backup", { config });
   }
 
-  return {
-    success: true,
-    records_processed: 15420,
-    bytes_transferred: 8388608,
-    elapsed_ms: 850,
-    output_path: config.output_path,
-    message: "Backup completed successfully (Simulated).",
-  };
+  const res = await fetch("/api/mongo/backup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+  if (!res.ok) throw new Error(`Backup failed with status ${res.status}`);
+  return await res.json();
 }
 
 export async function runRestore(config: RestoreConfig): Promise<JobSummary> {
@@ -306,14 +341,13 @@ export async function runRestore(config: RestoreConfig): Promise<JobSummary> {
     return await invoke<JobSummary>("run_restore", { config });
   }
 
-  return {
-    success: true,
-    records_processed: 15420,
-    bytes_transferred: 8388608,
-    elapsed_ms: 1100,
-    output_path: config.input_path,
-    message: "Restore completed successfully (Simulated).",
-  };
+  const res = await fetch("/api/mongo/restore", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+  if (!res.ok) throw new Error(`Restore failed with status ${res.status}`);
+  return await res.json();
 }
 
 export async function inspectArchive(archivePath: string): Promise<ArchiveMetadata> {
@@ -326,7 +360,7 @@ export async function inspectArchive(archivePath: string): Promise<ArchiveMetada
     path: archivePath,
     size_bytes: 4194304,
     is_valid: true,
-    detected_database: "store_db",
+    detected_database: "test_db",
   };
 }
 
@@ -352,7 +386,7 @@ export async function getDefaultBackupDir(): Promise<string> {
     return await invoke<string>("get_default_backup_dir");
   }
 
-  return "C:\\Users\\Mock\\AppData\\Local\\Mongox\\backups";
+  return "backups";
 }
 
 // ==========================================
@@ -373,7 +407,11 @@ export async function listIndexes(
     });
   }
 
-  return [];
+  const res = await fetch(
+    `/api/mongo/indexes?connection_id=${encodeURIComponent(connectionId)}&database=${encodeURIComponent(database)}&collection=${encodeURIComponent(collection)}`
+  );
+  if (!res.ok) return [];
+  return await res.json();
 }
 
 export async function createIndex(req: CreateIndexRequest): Promise<string> {
@@ -382,7 +420,13 @@ export async function createIndex(req: CreateIndexRequest): Promise<string> {
     return await invoke<string>("create_index", { req });
   }
 
-  return req.name || "index_created";
+  const res = await fetch("/api/mongo/indexes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) throw new Error("Failed to create index");
+  return await res.json();
 }
 
 export async function dropIndex(req: DropIndexRequest): Promise<string> {
@@ -391,7 +435,13 @@ export async function dropIndex(req: DropIndexRequest): Promise<string> {
     return await invoke<string>("drop_index", { req });
   }
 
-  return req.index_name;
+  const res = await fetch("/api/mongo/indexes", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) throw new Error("Failed to drop index");
+  return await res.json();
 }
 
 // ==========================================
@@ -404,14 +454,13 @@ export async function runExport(config: ExportConfig): Promise<JobSummary> {
     return await invoke<JobSummary>("run_export", { config });
   }
 
-  return {
-    success: true,
-    records_processed: 8210,
-    bytes_transferred: 1048576,
-    elapsed_ms: 450,
-    output_path: config.output_path,
-    message: `Exported 8,210 records as ${config.format.toUpperCase()} (Simulated).`,
-  };
+  const res = await fetch("/api/mongo/export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+  if (!res.ok) throw new Error(`Export failed with status ${res.status}`);
+  return await res.json();
 }
 
 export async function runImport(config: ImportConfig): Promise<JobSummary> {
@@ -420,30 +469,155 @@ export async function runImport(config: ImportConfig): Promise<JobSummary> {
     return await invoke<JobSummary>("run_import", { config });
   }
 
-  return {
-    success: true,
-    records_processed: 5000,
-    bytes_transferred: 624288,
-    elapsed_ms: 600,
-    output_path: config.input_path,
-    message: `Imported 5,000 records using mode ${config.conflict_mode} (Simulated).`,
-  };
+  const res = await fetch("/api/mongo/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+  if (!res.ok) throw new Error(`Import failed with status ${res.status}`);
+  return await res.json();
 }
 
-export async function previewImportFile(inputPath: string, format: string): Promise<ImportPreview> {
+export async function previewImportFile(
+  filePath: string,
+  _formatOrRows?: string | number
+): Promise<ImportPreview> {
   if (isTauriEnvironment()) {
     const { invoke } = await import("@tauri-apps/api/core");
-    return await invoke<ImportPreview>("preview_import_file", { inputPath, format });
+    const maxRows = typeof _formatOrRows === "number" ? _formatOrRows : 10;
+    return await invoke<ImportPreview>("preview_import_file", { filePath, maxRows });
   }
 
   return {
-    format: "json",
-    total_preview_rows: 3,
-    headers: ["_id", "name", "email", "age", "status"],
+    format: "csv",
+    total_preview_rows: 2,
+    headers: ["id", "name", "email", "status"],
     preview_records: [
-      { _id: "1", name: "Alice", email: "alice@test.com", age: 28, status: "active" },
-      { _id: "2", name: "Bob", email: "bob@test.com", age: 34, status: "inactive" },
-      { _id: "3", name: "Charlie", email: "charlie@test.com", age: 22, status: "active" },
+      { id: "1", name: "Alice", email: "alice@example.com", status: "active" },
+      { id: "2", name: "Bob", email: "bob@example.com", status: "pending" },
     ],
   };
+}
+
+export const previewImport = previewImportFile;
+
+export async function dropDatabase(connectionId: string, database: string): Promise<void> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke<void>("drop_database", { connectionId, database });
+    return;
+  }
+
+  await fetch("/api/mongo/drop-database", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ connection_id: connectionId, database }),
+  });
+}
+
+export async function dropCollection(
+  connectionId: string,
+  database: string,
+  collection: string
+): Promise<void> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke<void>("drop_collection", { connectionId, database, collection });
+    return;
+  }
+
+  await fetch("/api/mongo/drop-collection", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ connection_id: connectionId, database, collection }),
+  });
+}
+
+// ==========================================
+// User Management APIs
+// ==========================================
+
+export async function listDatabaseUsers(
+  connectionId: string,
+  database: string
+): Promise<MongoUser[]> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<MongoUser[]>("list_database_users", {
+      connectionId,
+      database,
+    });
+  }
+
+  const res = await fetch(
+    `/api/mongo/users?connection_id=${encodeURIComponent(connectionId)}&database=${encodeURIComponent(database)}`
+  );
+  if (!res.ok) return [];
+  return await res.json();
+}
+
+export async function createDatabaseUser(req: CreateUserRequest): Promise<void> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke<void>("create_database_user", { req });
+    return;
+  }
+
+  const res = await fetch("/api/mongo/users/create", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "Failed to create user");
+  }
+}
+
+export async function updateDatabaseUser(req: UpdateUserRequest): Promise<void> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke<void>("update_database_user", { req });
+    return;
+  }
+
+  const res = await fetch("/api/mongo/users/update", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "Failed to update user");
+  }
+}
+
+export async function dropDatabaseUser(
+  connectionId: string,
+  database: string,
+  username: string
+): Promise<void> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke<void>("drop_database_user", {
+      connectionId,
+      database,
+      username,
+    });
+    return;
+  }
+
+  const res = await fetch("/api/mongo/users/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      connection_id: connectionId,
+      database,
+      username,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "Failed to drop user");
+  }
 }

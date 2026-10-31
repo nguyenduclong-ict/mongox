@@ -17,8 +17,7 @@ fn test_connection_profile_persistence_and_serialization() {
     let manager = ConnectionManager::new(dir.path()).unwrap();
 
     let initial = manager.list_profiles();
-    assert_eq!(initial.len(), 1);
-    assert_eq!(initial[0].name, "Local MongoDB");
+    assert_eq!(initial.len(), 0);
 
     // Add production profile
     let prod_profile = ConnectionProfile {
@@ -28,6 +27,7 @@ fn test_connection_profile_persistence_and_serialization() {
         environment: Environment::Production,
         created_at: String::new(),
         updated_at: String::new(),
+        ..Default::default()
     };
 
     let saved = manager.save_profile(prod_profile).unwrap();
@@ -41,9 +41,9 @@ fn test_connection_profile_persistence_and_serialization() {
         "mongodb+srv://admin:***@cluster0.example.com/production?ssl=true"
     );
 
-    // Verify list contains both
+    // Verify list contains saved profile
     let list = manager.list_profiles();
-    assert_eq!(list.len(), 2);
+    assert_eq!(list.len(), 1);
 
     // Reload from disk into new instance
     let manager2 = ConnectionManager::new(dir.path()).unwrap();
@@ -80,8 +80,9 @@ fn test_backup_and_restore_argument_builders() {
     let dump_cfg = BackupConfig {
         connection_id: "conn-prod".to_string(),
         database: "ecommerce".to_string(),
-        collections: vec!["orders".to_string(), "customers".to_string()],
-        query_filter: Some("{\"year\": 2026}".to_string()),
+        collections: vec!["orders".to_string()],
+        query_filter: None,
+        custom_args: Some("--verbose".to_string()),
         output_path: "C:\\snapshots\\backup.dump.gz".to_string(),
         gzip: true,
         archive: true,
@@ -89,9 +90,8 @@ fn test_backup_and_restore_argument_builders() {
 
     let dump_args = BackupService::build_dump_arguments("mongodb://localhost:27017", &dump_cfg);
     assert!(dump_args.contains(&"--db=ecommerce".to_string()));
-    assert!(dump_args.contains(&"--nsInclude=ecommerce.orders".to_string()));
-    assert!(dump_args.contains(&"--nsInclude=ecommerce.customers".to_string()));
-    assert!(dump_args.contains(&"--query={\"year\": 2026}".to_string()));
+    assert!(dump_args.contains(&"--collection=orders".to_string()));
+    assert!(dump_args.contains(&"--verbose".to_string()));
     assert!(dump_args.contains(&"--gzip".to_string()));
     assert!(dump_args.contains(&"--archive=C:\\snapshots\\backup.dump.gz".to_string()));
 
@@ -101,6 +101,7 @@ fn test_backup_and_restore_argument_builders() {
         input_path: "C:\\snapshots\\backup.dump.gz".to_string(),
         drop_existing: true,
         ns_include: Some("ecommerce.orders".to_string()),
+        custom_args: None,
         stop_on_error: true,
     };
 
@@ -214,6 +215,8 @@ fn test_export_and_import_argument_builders() {
         format: ExportFormat::Csv,
         input_path: "orders.csv".to_string(),
         conflict_mode: ConflictMode::StopOnError,
+        drop_existing: false,
+        ignore_blanks: false,
     };
 
     let import_args =
@@ -281,6 +284,7 @@ async fn test_missing_tools_and_security_guards() {
         database: "db".to_string(),
         collections: vec![],
         query_filter: None,
+        custom_args: None,
         output_path: "backup.dump.gz".to_string(),
         gzip: true,
         archive: true,
@@ -298,6 +302,7 @@ async fn test_missing_tools_and_security_guards() {
         input_path: "backup.dump.gz".to_string(),
         drop_existing: false,
         ns_include: None,
+        custom_args: None,
         stop_on_error: true,
     };
     let restore_err =

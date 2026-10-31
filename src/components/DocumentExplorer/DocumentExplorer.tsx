@@ -13,6 +13,8 @@ import {
   deleteDocument,
 } from "../../services/tauri";
 import { ExplainResult, QueryResult } from "../../types";
+import { ConfirmationModal } from "../ui/ConfirmationModal";
+import { ToastContainer, ToastMessage } from "../ui/Toast";
 import {
   Table as TableIcon,
   FolderTree,
@@ -36,7 +38,7 @@ export const DocumentExplorer: React.FC<DocumentExplorerProps> = ({
   connectionId,
   database,
   collection,
-  onRequireProductionConfirm,
+  onRequireProductionConfirm: _onRequireProductionConfirm,
   isProduction,
 }) => {
   const [viewMode, setViewMode] = useState<"table" | "tree" | "raw">("table");
@@ -44,7 +46,32 @@ export const DocumentExplorer: React.FC<DocumentExplorerProps> = ({
   const [sort, setSort] = useState<string>("");
   const [projection, setProjection] = useState<string>("");
   const [limit, setLimit] = useState<number>(50);
-  const [skip] = useState<number>(0);
+  const [skip, setSkip] = useState<number>(0);
+
+  // Multi-selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [singleDeleteId, setSingleDeleteId] = useState<string | null>(null);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState<boolean>(false);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const addToast = (
+    type: "info" | "success" | "loading" | "error",
+    message: string,
+    id?: string
+  ): string => {
+    const toastId = id || Math.random().toString(36).substring(2, 9);
+    setToasts((prev) => {
+      const filtered = prev.filter((t) => t.id !== toastId);
+      return [...filtered, { id: toastId, type, message }];
+    });
+    return toastId;
+  };
+
+  // Reset pagination and selection on collection change
+  useEffect(() => {
+    setSkip(0);
+    setSelectedIds(new Set());
+  }, [database, collection]);
 
   const [queryResult, setQueryResult] = useState<QueryResult>({
     documents: [],
@@ -65,35 +92,48 @@ export const DocumentExplorer: React.FC<DocumentExplorerProps> = ({
   const [explainResult, setExplainResult] = useState<ExplainResult | null>(null);
   const [isExplainOpen, setIsExplainOpen] = useState<boolean>(false);
 
-  const runQuery = useCallback(async () => {
-    if (!connectionId || !database || !collection) return;
+  const runQuery = useCallback(
+    async (override?: { skip?: number; sort?: string; filter?: string; limit?: number }) => {
+      if (!connectionId || !database || !collection) return;
 
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await executeQuery({
-        connection_id: connectionId,
-        database,
-        collection,
-        filter: filter.trim(),
-        sort: sort.trim() ? sort.trim() : undefined,
-        projection: projection.trim() ? projection.trim() : undefined,
-        limit,
-        skip,
-      });
-      setQueryResult(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [connectionId, database, collection, filter, sort, projection, limit, skip]);
+      const actualSkip = override?.skip !== undefined ? override.skip : skip;
+      const actualSort = override?.sort !== undefined ? override.sort : sort;
+      const actualFilter = override?.filter !== undefined ? override.filter : filter;
+      const actualLimit = override?.limit !== undefined ? override.limit : limit;
+
+      setIsLoading(true);
+      setError(null);
+      try {
+        const res = await executeQuery({
+          connection_id: connectionId,
+          database,
+          collection,
+          filter: actualFilter.trim(),
+          sort: actualSort.trim() ? actualSort.trim() : undefined,
+          projection: projection.trim() ? projection.trim() : undefined,
+          limit: actualLimit,
+          skip: actualSkip,
+        });
+        setQueryResult(res);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [connectionId, database, collection, filter, sort, projection, limit, skip]
+  );
+
+  const handleExecute = () => {
+    setSkip(0);
+    runQuery({ skip: 0 });
+  };
 
   useEffect(() => {
     if (connectionId && database && collection) {
       runQuery();
     }
-  }, [connectionId, database, collection, runQuery]);
+  }, [connectionId, database, collection, skip]);
 
   const handleExplain = async () => {
     if (!connectionId || !database || !collection) return;
@@ -138,19 +178,86 @@ export const DocumentExplorer: React.FC<DocumentExplorerProps> = ({
     await runQuery();
   };
 
-  const handleDeleteDocument = async (id: string) => {
-    if (!connectionId || !database || !collection) return;
+  const [sortField, setSortField] = useState<string | undefined>(undefined);
+  const [sortDir, setSortDir] = useState<1 | -1 | undefined>(undefined);
 
-    const performDelete = async () => {
-      await deleteDocument(connectionId, database, collection, id);
-      await runQuery();
-    };
-
-    if (isProduction && onRequireProductionConfirm) {
-      onRequireProductionConfirm("Delete Document", id, performDelete);
+  const handleSortChange = (field: string, direction: 1 | -1 | 0) => {
+    let newSortStr = "";
+    if (direction === 0) {
+      setSortField(undefined);
+      setSortDir(undefined);
+      setSort("");
+      newSortStr = "";
     } else {
-      await performDelete();
+      setSortField(field);
+      setSortDir(direction);
+      newSortStr = JSON.stringify({ [field]: direction });
+      setSort(newSortStr);
     }
+    setSkip(0);
+    runQuery({ sort: newSortStr, skip: 0 });
+  };
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAll = (select: boolean) => {
+    if (select) {
+      const ids = queryResult.documents.map((d) => {
+        const rawId = d["_id"];
+        return typeof rawId === "object" && rawId !== null && "$oid" in rawId
+          ? String((rawId as Record<string, unknown>)["$oid"])
+          : String(rawId || "");
+      });
+      setSelectedIds(new Set(ids));
+    } else {
+      setSelectedIds(new Set());
+    }
+  };
+
+  const handleCopySelectedIds = () => {
+    navigator.clipboard.writeText(JSON.stringify(Array.from(selectedIds)));
+    addToast("success", `Copied ${selectedIds.size} IDs.`);
+  };
+
+  const handleCopySelectedJson = () => {
+    const selectedDocs = queryResult.documents.filter((d) => {
+      const rawId = d["_id"];
+      const idStr =
+        typeof rawId === "object" && rawId !== null && "$oid" in rawId
+          ? String((rawId as Record<string, unknown>)["$oid"])
+          : String(rawId);
+      return selectedIds.has(idStr);
+    });
+    navigator.clipboard.writeText(JSON.stringify(selectedDocs, null, 2));
+    addToast("success", `Copied ${selectedDocs.length} JSON documents.`);
+  };
+
+  const handleDeleteDocument = (id: string) => {
+    setSingleDeleteId(id);
+  };
+
+  const confirmSingleDelete = async () => {
+    if (!connectionId || !database || !collection || !singleDeleteId) return;
+    await deleteDocument(connectionId, database, collection, singleDeleteId);
+    setSingleDeleteId(null);
+    await runQuery();
+  };
+
+  const confirmBulkDelete = async () => {
+    if (!connectionId || !database || !collection) return;
+    for (const id of Array.from(selectedIds)) {
+      await deleteDocument(connectionId, database, collection, id);
+    }
+    setSelectedIds(new Set());
+    setBulkDeleteConfirmOpen(false);
+    await runQuery();
   };
 
   const handleUpdateCell = async (docId: string, field: string, newValue: unknown) => {
@@ -230,7 +337,7 @@ export const DocumentExplorer: React.FC<DocumentExplorerProps> = ({
           </div>
 
           <button
-            onClick={runQuery}
+            onClick={() => runQuery()}
             className="p-1.5 rounded-md hover:bg-surface text-gray-400 hover:text-white border border-transparent hover:border-hairline transition-colors"
             title="Refresh Results"
           >
@@ -257,16 +364,23 @@ export const DocumentExplorer: React.FC<DocumentExplorerProps> = ({
         setProjection={setProjection}
         limit={limit}
         setLimit={setLimit}
-        onExecute={runQuery}
+        skip={skip}
+        onPageChange={(newSkip) => setSkip(newSkip)}
+        onExecute={handleExecute}
         onExplain={handleExplain}
         isLoading={isLoading}
         elapsedMs={queryResult.elapsed_ms}
         totalCount={queryResult.total_count}
+        selectedCount={selectedIds.size}
+        onCopySelectedIds={handleCopySelectedIds}
+        onCopySelectedJson={handleCopySelectedJson}
+        onDeleteSelected={() => setBulkDeleteConfirmOpen(true)}
+        onDeselectAll={() => setSelectedIds(new Set())}
       />
 
       {/* Error Message */}
       {error && (
-        <div className="bg-guard/10 border-b border-guard/30 px-4 py-2 text-red-300 text-xs font-mono">
+        <div className="bg-guard/10 border-b border-guard/30 px-4 py-2 text-red-300 text-xs font-mono select-text cursor-text">
           Query Error: {error}
         </div>
       )}
@@ -279,6 +393,13 @@ export const DocumentExplorer: React.FC<DocumentExplorerProps> = ({
             onEdit={handleOpenEdit}
             onDelete={handleDeleteDocument}
             onUpdateCell={handleUpdateCell}
+            selectedIds={selectedIds}
+            onToggleSelect={handleToggleSelect}
+            onSelectAll={handleSelectAll}
+            onSortChange={handleSortChange}
+            currentSortField={sortField}
+            currentSortDir={sortDir}
+            onToast={addToast}
           />
         )}
         {viewMode === "tree" && (
@@ -307,6 +428,38 @@ export const DocumentExplorer: React.FC<DocumentExplorerProps> = ({
         explain={explainResult}
         database={database}
         collection={collection}
+      />
+
+      {/* Single Document Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={singleDeleteId !== null}
+        onClose={() => setSingleDeleteId(null)}
+        onConfirm={confirmSingleDelete}
+        title="Delete Document?"
+        message={`This action cannot be undone. The document with ID ${singleDeleteId} will be permanently removed from ${database}.${collection}.`}
+        confirmLabel="Delete Document"
+        confirmVariant="danger"
+        entityName={collection}
+        isProduction={isProduction}
+      />
+
+      {/* Bulk Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={bulkDeleteConfirmOpen}
+        onClose={() => setBulkDeleteConfirmOpen(false)}
+        onConfirm={confirmBulkDelete}
+        title={`Delete ${selectedIds.size} Selected Documents?`}
+        message={`This action cannot be undone. All ${selectedIds.size} selected documents will be permanently removed from ${database}.${collection}.`}
+        confirmLabel={`Delete ${selectedIds.size} Documents`}
+        confirmVariant="danger"
+        entityName={collection}
+        isProduction={isProduction}
+      />
+
+      {/* Floating Bottom-Right Toast Notifications */}
+      <ToastContainer
+        toasts={toasts}
+        onDismiss={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))}
       />
     </div>
   );

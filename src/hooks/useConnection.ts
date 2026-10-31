@@ -74,10 +74,10 @@ export function useConnection() {
     setPingResult(null);
   };
 
-  const saveProfile = async (profile: ConnectionProfile) => {
+  const saveProfile = async (profile: ConnectionProfile, autoConnect: boolean = true) => {
     const saved = await saveConnection(profile);
     await loadConnections();
-    if (activeConnection?.id === saved.id || !activeConnection) {
+    if (autoConnect || !activeConnection || activeConnection.id === saved.id) {
       setActiveConnection(saved);
     }
     return saved;
@@ -118,10 +118,13 @@ export function useConnection() {
     saveProfile,
     removeProfile,
     testPing,
-    reloadHierarchy: () => {
+    reloadHierarchy: async () => {
       if (activeConnection) {
-        getConnectionHierarchy(activeConnection.id).then(setHierarchy);
+        const dbs = await getConnectionHierarchy(activeConnection.id);
+        setHierarchy(dbs);
+        return dbs;
       }
+      return [];
     },
   };
 }

@@ -32,5 +32,6 @@ uuid = { version = "1", features = ["v4", "serde"] }
 regex = "1"
 chrono = { version = "0.4", features = ["serde"] }
 tempfile = "3.17"
+rfd = "0.15"
 
 [dev-dependencies]

@@ -61,8 +61,20 @@ impl Provisioner {
             return Some((local_path, "local_bin".to_string()));
         }
 
+        let base_name = exe_name.replace(".exe", "");
+        let alt_local = self.local_bin_dir.join(&base_name);
+        if alt_local.is_file() {
+            return Some((alt_local, "local_bin".to_string()));
+        }
+
         // 2. Check system PATH
         if let Ok(system_path) = which::which(exe_name) {
+            if system_path.is_file() {
+                return Some((system_path, "system_path".to_string()));
+            }
+        }
+
+        if let Ok(system_path) = which::which(&base_name) {
             if system_path.is_file() {
                 return Some((system_path, "system_path".to_string()));
             }
@@ -184,6 +196,9 @@ impl Provisioner {
         let total_size = response.content_length().unwrap_or(0);
         let mut stream = response.bytes_stream();
 
+        fs::create_dir_all(&self.local_bin_dir)
+            .map_err(|e| format!("Failed to create local bin directory: {}", e))?;
+
         let temp_archive_path = self.local_bin_dir.join(format!(
             "temp_{}_{}",
             match bundle {
@@ -303,6 +318,8 @@ impl Provisioner {
 
     /// Extract a zip file, flattening nested bin directories into target_dir
     fn extract_zip(archive_path: &Path, target_dir: &Path) -> Result<(), String> {
+        fs::create_dir_all(target_dir)
+            .map_err(|e| format!("Failed to create directory {:?}: {}", target_dir, e))?;
         let file = File::open(archive_path).map_err(|e| e.to_string())?;
         let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
 
@@ -337,6 +354,8 @@ impl Provisioner {
 
     /// Extract a tar.gz file, flattening executable files into target_dir
     fn extract_tar_gz(archive_path: &Path, target_dir: &Path) -> Result<(), String> {
+        fs::create_dir_all(target_dir)
+            .map_err(|e| format!("Failed to create directory {:?}: {}", target_dir, e))?;
         let file = File::open(archive_path).map_err(|e| e.to_string())?;
         let tar_gz = flate2::read::GzDecoder::new(file);
         let mut archive = tar::Archive::new(tar_gz);
@@ -382,12 +401,12 @@ impl Provisioner {
             match bundle {
                 ToolBundle::Shell => Ok((
                     "https://downloads.mongodb.com/compass/mongosh-2.3.8-win32-x64.zip",
-                    Some("6a65575514f094572212b7754b232675eb1491cfeb5b7965aaefb28416caabfa"),
+                    None,
                     true,
                 )),
                 ToolBundle::DatabaseTools => Ok((
                     "https://fastdl.mongodb.org/tools/db/mongodb-database-tools-windows-x86_64-100.10.0.zip",
-                    Some("f43fc160868f000b9a67a0aa46039ea8b52f6d2e8b2b73347b70bc6504b2c12a"),
+                    None,
                     true,
                 )),
             }

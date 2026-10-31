@@ -24,7 +24,12 @@ src-tauri/gen/
 *.sln
 *.sw?
 
-# OS Files
+# Test & Export Output Artifacts
+backups/
+exports/
+export_*
+export_output*
 Thumbs.db
 [Dd]esktop.ini
 .DS_Store
+./bugs

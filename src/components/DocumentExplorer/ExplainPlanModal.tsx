@@ -1,15 +1,17 @@
-import React from "react";
+import React, { useState } from "react";
 import { ExplainResult } from "../../types";
 import {
   Activity,
   X,
-  AlertTriangle,
   CheckCircle2,
   Clock,
   Eye,
   Key,
   Layers,
   FileCode,
+  Info,
+  Copy,
+  Check,
 } from "lucide-react";
 
 interface ExplainPlanModalProps {
@@ -27,50 +29,51 @@ export const ExplainPlanModal: React.FC<ExplainPlanModalProps> = ({
   database,
   collection,
 }) => {
-  const [showRaw, setShowRaw] = React.useState<boolean>(false);
+  const [showRaw, setShowRaw] = useState<boolean>(false);
+  const [copiedRaw, setCopiedRaw] = useState<boolean>(false);
 
   if (!isOpen || !explain) return null;
 
   const isCollScan = explain.is_collection_scan || explain.stage === "COLLSCAN";
 
+  const handleCopyRaw = () => {
+    if (!explain.raw_stats_json) return;
+    navigator.clipboard.writeText(explain.raw_stats_json);
+    setCopiedRaw(true);
+    setTimeout(() => setCopiedRaw(false), 1500);
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-150">
-      <div className="w-full max-w-2xl bg-modal border border-white/10 rounded-xl shadow-modal text-gray-200 overflow-hidden flex flex-col max-h-[85vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+      <div className="w-full max-w-2xl bg-modal border border-hairline rounded-xl shadow-modal text-gray-200 overflow-hidden flex flex-col max-h-[85vh] font-sans">
         {/* Header */}
-        <div className="h-14 px-6 border-b border-hairline flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div
-              className={`p-1.5 rounded-lg border ${
-                isCollScan
-                  ? "bg-guard/10 border-guard/30 text-guard"
-                  : "bg-mongo/10 border-mongo/30 text-mongo"
-              }`}
-            >
-              <Activity className="w-4 h-4" />
-            </div>
-            <div>
+        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between shrink-0 bg-modal">
+          <div className="flex items-center gap-3 min-w-0">
+            <Activity className={`w-4 h-4 shrink-0 ${isCollScan ? "text-amber-400" : "text-mongo"}`} />
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-semibold text-white tracking-tight">
                   Visual Query Profiler & Explain Plan
                 </h2>
                 <span
-                  className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded font-semibold border ${
                     isCollScan
-                      ? "bg-guard/20 border-guard/40 text-red-300 animate-pulse"
-                      : "bg-mongo/20 border-mongo/40 text-emerald-300"
+                      ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                      : "bg-mongo/10 border-mongo/30 text-emerald-300"
                   }`}
                 >
                   {explain.stage}
                 </span>
               </div>
-              <p className="text-[11px] text-gray-400">
-                Execution plan analysis for {database}.{collection}
+              <p className="text-[12px] text-gray-400 font-normal truncate mt-0.5">
+                Analysis for {database}.{collection}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-md hover:bg-surface text-gray-400 hover:text-white transition-colors"
+            aria-label="Close"
+            className="p-1.5 rounded-md hover:bg-white/[0.06] text-gray-400 hover:text-white transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -78,41 +81,43 @@ export const ExplainPlanModal: React.FC<ExplainPlanModalProps> = ({
 
         {/* Content Body */}
         <div className="p-6 space-y-4 overflow-y-auto flex-1">
-          {/* Performance Alert Banner */}
+          {/* Performance Advisory Banner */}
           {isCollScan ? (
-            <div className="p-3.5 rounded-xl bg-guard/10 border border-guard/30 text-xs text-red-200 flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-guard shrink-0 mt-0.5" />
+            <div className="p-3.5 rounded-lg bg-surface border border-amber-500/30 text-xs text-amber-200 flex items-start gap-3">
+              <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
               <div className="space-y-1">
-                <div className="font-semibold text-white">
-                  Warning: Unindexed Full Collection Scan (COLLSCAN)
+                <div className="font-semibold text-amber-100">
+                  Collection Scan (COLLSCAN)
                 </div>
                 <div className="text-[11px] text-gray-300 leading-relaxed">
-                  MongoDB examined <strong className="text-white">{explain.total_docs_examined} documents</strong> to return <strong className="text-white">{explain.n_returned} documents</strong>. Creating an index matching this filter will drastically improve query throughput.
+                  No index matched this query. MongoDB examined{" "}
+                  <strong className="text-white font-mono">{explain.total_docs_examined} documents</strong> to return{" "}
+                  <strong className="text-white font-mono">{explain.n_returned} documents</strong>. Creating an index matching this filter will optimize execution throughput.
                 </div>
               </div>
             </div>
           ) : (
-            <div className="p-3.5 rounded-xl bg-mongo/10 border border-mongo/30 text-xs text-emerald-200 flex items-start gap-3">
-              <CheckCircle2 className="w-5 h-5 text-mongo shrink-0 mt-0.5" />
+            <div className="p-3.5 rounded-lg bg-surface border border-mongo/30 text-xs text-emerald-200 flex items-start gap-3">
+              <CheckCircle2 className="w-4 h-4 text-mongo shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <div className="font-semibold text-white">
-                  Optimal Index Utilization ({explain.stage})
+                  Index Utilized ({explain.stage})
                 </div>
                 <div className="text-[11px] text-gray-300 leading-relaxed">
                   Query satisfied using index:{" "}
                   <code className="text-emerald-300 font-mono font-semibold">
                     {explain.index_name || "_id_"}
                   </code>
-                  . Only examined {explain.total_keys_examined} index keys.
+                  . Examined {explain.total_keys_examined} index keys.
                 </div>
               </div>
             </div>
           )}
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="p-3 rounded-lg bg-surface/50 border border-hairline space-y-1">
-              <div className="text-[10px] text-gray-500 font-mono uppercase flex items-center gap-1">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div className="p-3 rounded-lg bg-surface border border-hairline space-y-1">
+              <div className="text-[10px] text-gray-400 font-mono flex items-center gap-1">
                 <Clock className="w-3 h-3 text-mongo" />
                 <span>Execution Time</span>
               </div>
@@ -121,8 +126,8 @@ export const ExplainPlanModal: React.FC<ExplainPlanModalProps> = ({
               </div>
             </div>
 
-            <div className="p-3 rounded-lg bg-surface/50 border border-hairline space-y-1">
-              <div className="text-[10px] text-gray-500 font-mono uppercase flex items-center gap-1">
+            <div className="p-3 rounded-lg bg-surface border border-hairline space-y-1">
+              <div className="text-[10px] text-gray-400 font-mono flex items-center gap-1">
                 <Eye className="w-3 h-3 text-sky-400" />
                 <span>Docs Examined</span>
               </div>
@@ -131,8 +136,8 @@ export const ExplainPlanModal: React.FC<ExplainPlanModalProps> = ({
               </div>
             </div>
 
-            <div className="p-3 rounded-lg bg-surface/50 border border-hairline space-y-1">
-              <div className="text-[10px] text-gray-500 font-mono uppercase flex items-center gap-1">
+            <div className="p-3 rounded-lg bg-surface border border-hairline space-y-1">
+              <div className="text-[10px] text-gray-400 font-mono flex items-center gap-1">
                 <Layers className="w-3 h-3 text-emerald-400" />
                 <span>Returned</span>
               </div>
@@ -141,8 +146,8 @@ export const ExplainPlanModal: React.FC<ExplainPlanModalProps> = ({
               </div>
             </div>
 
-            <div className="p-3 rounded-lg bg-surface/50 border border-hairline space-y-1">
-              <div className="text-[10px] text-gray-500 font-mono uppercase flex items-center gap-1">
+            <div className="p-3 rounded-lg bg-surface border border-hairline space-y-1">
+              <div className="text-[10px] text-gray-400 font-mono flex items-center gap-1">
                 <Key className="w-3 h-3 text-amber-400" />
                 <span>Keys Examined</span>
               </div>
@@ -157,25 +162,47 @@ export const ExplainPlanModal: React.FC<ExplainPlanModalProps> = ({
             <button
               type="button"
               onClick={() => setShowRaw(!showRaw)}
-              className="text-xs font-mono text-mongo hover:text-emerald-400 flex items-center gap-1.5 transition-colors"
+              className="px-3 py-1.5 rounded-md bg-surface border border-hairline hover:bg-surface-hover text-xs font-mono text-gray-300 hover:text-white flex items-center gap-2 transition-colors"
             >
-              <FileCode className="w-3.5 h-3.5" />
+              <FileCode className="w-3.5 h-3.5 text-mongo" />
               <span>{showRaw ? "Hide Raw Execution Plan JSON" : "View Raw Execution Plan JSON"}</span>
             </button>
 
             {showRaw && (
-              <pre className="mt-2 p-3 bg-canvas border border-hairline rounded-lg text-[11px] font-mono text-gray-300 max-h-56 overflow-auto leading-relaxed select-all">
-                {explain.raw_stats_json}
-              </pre>
+              <div className="mt-2.5 rounded-lg border border-hairline bg-canvas overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-1.5 border-b border-hairline bg-surface/60 text-[10px] font-mono text-gray-400">
+                  <span>Raw Execution Plan JSON</span>
+                  <button
+                    type="button"
+                    onClick={handleCopyRaw}
+                    className="flex items-center gap-1 text-gray-300 hover:text-white transition-colors"
+                  >
+                    {copiedRaw ? (
+                      <>
+                        <Check className="w-3 h-3 text-emerald-400" />
+                        <span className="text-emerald-400">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3" />
+                        <span>Copy JSON</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <pre className="p-3 text-[11px] font-mono text-gray-300 max-h-56 overflow-auto leading-relaxed select-all">
+                  {explain.raw_stats_json}
+                </pre>
+              </div>
             )}
           </div>
         </div>
 
         {/* Footer */}
-        <div className="h-12 px-6 border-t border-hairline flex items-center justify-end shrink-0">
+        <div className="px-6 py-4 border-t border-hairline bg-panel flex items-center justify-end shrink-0">
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-md bg-surface hover:bg-surface-hover text-xs font-medium text-gray-200 transition-colors"
+            className="px-4 py-2 rounded-md bg-surface hover:bg-white/[0.08] text-xs font-medium text-gray-200 border border-hairline transition-colors"
           >
             Dismiss
           </button>

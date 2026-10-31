@@ -103,13 +103,47 @@ pub enum Environment {
     Production,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ConnectionProfile {
     pub id: String,
     pub name: String,
     pub uri: String,
+    #[serde(default)]
     pub environment: Environment,
+    #[serde(default)]
+    pub color: Option<String>,
+    #[serde(default, alias = "connection_type")]
+    pub connection_type: Option<String>,
+    #[serde(default)]
+    pub host: Option<String>,
+    #[serde(default)]
+    pub port: Option<u16>,
+    #[serde(default, alias = "is_srv")]
+    pub is_srv: Option<bool>,
+    #[serde(default, alias = "read_only")]
+    pub read_only: Option<bool>,
+    #[serde(default, alias = "auth_mechanism")]
+    pub auth_mechanism: Option<String>,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default, alias = "auth_db")]
+    pub auth_db: Option<String>,
+    #[serde(default, alias = "use_tls")]
+    pub use_tls: Option<bool>,
+    #[serde(default, alias = "use_ssh")]
+    pub use_ssh: Option<bool>,
+    #[serde(default, alias = "ssh_host")]
+    pub ssh_host: Option<String>,
+    #[serde(default, alias = "ssh_port")]
+    pub ssh_port: Option<u16>,
+    #[serde(default, alias = "ssh_user")]
+    pub ssh_user: Option<String>,
+    #[serde(default, alias = "default_db")]
+    pub default_db: Option<String>,
+    #[serde(default, alias = "created_at")]
     pub created_at: String,
+    #[serde(default, alias = "updated_at")]
     pub updated_at: String,
 }
 
@@ -190,8 +224,12 @@ pub struct DocumentMutation {
 pub struct BackupConfig {
     pub connection_id: String,
     pub database: String,
+    #[serde(default)]
     pub collections: Vec<String>,
+    #[serde(default)]
     pub query_filter: Option<String>,
+    #[serde(default)]
+    pub custom_args: Option<String>,
     pub output_path: String,
     pub gzip: bool,
     pub archive: bool,
@@ -203,7 +241,10 @@ pub struct RestoreConfig {
     pub database: String,
     pub input_path: String,
     pub drop_existing: bool,
+    #[serde(default)]
     pub ns_include: Option<String>,
+    #[serde(default)]
+    pub custom_args: Option<String>,
     pub stop_on_error: bool,
 }
 
@@ -310,6 +351,10 @@ pub struct ImportConfig {
     pub format: ExportFormat,
     pub input_path: String,
     pub conflict_mode: ConflictMode,
+    #[serde(default)]
+    pub drop_existing: bool,
+    #[serde(default)]
+    pub ignore_blanks: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -328,4 +373,45 @@ pub struct JobSummary {
     pub elapsed_ms: u64,
     pub output_path: Option<String>,
     pub message: String,
+}
+
+// ==========================================
+// User Management Models
+// ==========================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MongoUserRole {
+    pub role: String,
+    pub db: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MongoUser {
+    pub user: String,
+    pub db: String,
+    pub roles: Vec<MongoUserRole>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateUserRequest {
+    #[serde(alias = "connection_id")]
+    pub connection_id: String,
+    pub database: String,
+    pub username: String,
+    pub password: String,
+    pub roles: Vec<MongoUserRole>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateUserRequest {
+    #[serde(alias = "connection_id")]
+    pub connection_id: String,
+    pub database: String,
+    pub username: String,
+    pub password: Option<String>,
+    pub roles: Option<Vec<MongoUserRole>>,
 }

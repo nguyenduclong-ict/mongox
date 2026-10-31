@@ -49,6 +49,18 @@ export function useProvisioning() {
         setActiveDownload(progress);
       });
 
+      setTools((prev) =>
+        prev.map((t) => {
+          const isTarget =
+            t.name === toolName ||
+            (toolName === "mongosh" && t.bundle === "shell") ||
+            (toolName !== "mongosh" && t.bundle === "databasetools");
+          return isTarget
+            ? { ...t, is_available: true, source: t.source || "local_bin", path: t.path || path }
+            : t;
+        })
+      );
+
       await refreshTools();
       return path;
     } catch (err) {

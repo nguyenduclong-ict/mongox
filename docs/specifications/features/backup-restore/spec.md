@@ -48,6 +48,7 @@ Implemented
   - AC-BKP-02: Generates valid `.dump.gz` archive files at the specified output path.
   - AC-BKP-03: Emits real-time progress updates displaying document counts and byte transfer rate.
   - AC-BKP-04: Restricts backup scope to specified query filters when provided.
+  - AC-BKP-05: Renders Target Database as a select dropdown populated from connection database hierarchy.
 
 ### FR-BKP-002: Restore Inspection and Execution
 - **Description:** Previews and restores data from an archive file into a target database via `mongorestore`, verifying tool availability on disk prior to execution.
@@ -57,8 +58,9 @@ Implemented
 - **Acceptance Criteria:**
   - AC-BKP-05: Verifies and lazily provisions `mongorestore` on demand when opening or running restore.
   - AC-BKP-06: Displays preview of databases and collections stored in the archive before execution.
-  - AC-BKP-07: Drops existing collections prior to insertion when the `--drop` option is checked.
-  - AC-BKP-08: Accurately reflects restored document counts in the completion summary.
+  - AC-BKP-07: Drops existing collections prior to insertion when the `--drop` option is checked (enabled by default for reliable snapshot recovery).
+  - AC-BKP-08: Sanitizes connection URI to strip database path when invoking `mongorestore` with `--archive`, using `--nsInclude` to prevent deprecation warnings.
+  - AC-BKP-09: Accurately reflects restored document counts in the completion summary.
 
 ### FR-BKP-003: Scheduled Local Backups
 - **Description:** Automates periodic execution of configured backup routines.
@@ -68,6 +70,22 @@ Implemented
 - **Acceptance Criteria:**
   - AC-BKP-07: Triggers scheduled backup jobs automatically at the configured time.
   - AC-BKP-08: Retains execution history for the last 50 backup runs.
+
+### FR-BKP-004: Target Collections Selection Controls
+- **Description:** Provides quick bulk selection controls for collections targeted by backup operations.
+- **Preconditions:** Backup modal open with database collections displayed.
+- **Expected Behavior:** Displays `Select All` and `Deselect All` buttons to toggle all collection checkboxes simultaneously.
+- **Acceptance Criteria:**
+  - AC-BKP-09: `Select All` selects all available collections in one click.
+  - AC-BKP-10: `Deselect All` clears the selection, defaulting to a full database dump.
+
+### FR-BKP-005: File and Folder Picker Integration
+- **Description:** Provides visual directory and file picker triggers beside path inputs.
+- **Preconditions:** Backup or Restore modal open.
+- **Expected Behavior:** An icon button (`FolderOpen`) beside the path input opens the native folder/file selection dialog.
+- **Acceptance Criteria:**
+  - AC-BKP-11: Folder picker populates the output directory field in Backup modal.
+  - AC-BKP-12: File picker populates the archive file path in Restore modal.
 
 ## 5. Business Rules
 ### BR-BKP-001: Safe Restoration Guard

@@ -72,6 +72,11 @@ Maintain strict separation between the native Rust backend and the React fronten
 - **Zero Em-Dashes**: Em-dashes (`—`) are strictly banned across all UI components, buttons, and documentation. Use hyphens (`-`) or colons.
 - **Purity of Intent (Anti-Test-Theater)**: UI interactions must drive authentic database operations. Simulating network successes without real database round-trips is strictly prohibited.
 
+### 3.5. UI Ergonomics & Safety Confirmation Standards
+- **Modal Backdrop Lightening**: Modals use a softened, airy dark blur (`bg-black/45 backdrop-blur-sm`) to keep background context discernible.
+- **Scrollbar Layout Stability**: Containers rendering dynamically sized document tables apply `scrollbar-gutter: stable` to eliminate horizontal layout shifts when scrollbars appear.
+- **Universal Safety Confirmation**: All destructive operations (single-document delete, bulk document delete, drop collection, drop database, and drop user) require interactive confirmation before execution. In production mode, confirmation requires typing the target entity name.
+
 ## 4. Git Commit Conventions
 
 Adopt Conventional Commits format:

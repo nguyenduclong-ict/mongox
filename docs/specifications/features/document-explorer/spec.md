@@ -87,6 +87,62 @@ Implemented
   - AC-DOC-10: Maintains 60 FPS scrolling and bounds active DOM nodes below 1,500 elements when viewing large datasets.
   - AC-DOC-11: Keeps the primary key (`_id`) column rigidly pinned during both vertical and horizontal scroll gestures.
 
+### FR-DOC-006: Comprehensive Dataset Pagination
+- **Description:** Provides full-featured pagination navigation across datasets of any size.
+- **Preconditions:** Collection loaded.
+- **Expected Behavior:**
+  - Displays total document count, current page, and total pages (e.g. `Page 1 of 100`).
+  - Navigation controls: First Page (`|<`), Previous (`<`), Next (`>`), and Last Page (`>|`).
+  - Page size selector allowing 20, 50, 100, 200, and 500 documents per page.
+  - Jump to page input allowing direct navigation to any page number.
+- **Acceptance Criteria:**
+  - AC-DOC-12: Correctly paginates across 5,000+ records and updates query results immediately upon page change.
+  - AC-DOC-13: Disables previous/first buttons on page 1 and next/last buttons on the final page.
+
+### FR-DOC-007: Multi-Record Selection and Inline Batch Actions
+- **Description:** Allows selecting multiple documents in Table View for batch operations with actions embedded directly in the pagination toolbar.
+- **Preconditions:** Table View active.
+- **Expected Behavior:**
+  - Column 1 contains checkboxes for individual row selection and a header checkbox supporting Select All / Deselect All / Indeterminate states.
+  - When one or more rows are selected, render action triggers directly within the pagination toolbar on the same horizontal row (avoiding vertical layout pushing).
+  - Batch action triggers: Copy IDs (copies JSON array of IDs), Copy JSON (copies full JSON of selected documents), Delete Selected, and Deselect All.
+- **Acceptance Criteria:**
+  - AC-DOC-14: Selecting rows renders action triggers inline with pagination controls without shifting table content.
+  - AC-DOC-15: Copy JSON copies full document objects to the system clipboard.
+
+### FR-DOC-008: Table Column Sorting and Context Menu Actions
+- **Description:** Provides column header click-to-sort toggles and row-level context menus replacing dedicated inline action columns.
+- **Preconditions:** Table View active.
+- **Expected Behavior:**
+  - Clicking any column header toggles sort between ascending (`1`), descending (`-1`), and none (`0`), updating query sort and resetting page to 1.
+  - Right-clicking any table row displays a custom context menu with options: Edit Document, Copy Document JSON, Copy Document ID, and Delete Document.
+  - Pin both the selection Checkbox column (`left: 0`) and the `_id` column (`left: 40px`) during horizontal scrolling.
+- **Acceptance Criteria:**
+  - AC-DOC-16: Column headers toggle sorting and execute sorted queries.
+  - AC-DOC-17: Row right-click opens context menu with document inspection and mutation actions.
+  - AC-DOC-18: Checkbox and `_id` columns remain pinned side-by-side during horizontal scrolling.
+  - AC-DOC-14: Tracks multi-selection state accurately across row clicks and select-all toggles.
+  - AC-DOC-15: Batch deletion prompts safety confirmation and deletes all selected documents in a single round-trip.
+
+### FR-DOC-008: Non-Distorting Inline Cell Editing
+- **Description:** In-place cell editing in Table View without altering column widths or shifting surrounding elements.
+- **Preconditions:** Table cell double-clicked.
+- **Expected Behavior:**
+  - Preserves exact column width; editor is contained within the cell's boundaries.
+  - Provides inline action triggers: Save (`✓`) and Cancel (`✕`).
+  - Pressing `Escape` or clicking outside dismisses edit mode without modifying data.
+  - Pressing `Enter` or clicking Save commits the modification.
+- **Acceptance Criteria:**
+  - AC-DOC-16: Editing a cell does not widen the column or shift adjacent layout elements.
+  - AC-DOC-17: Clicking outside cancels edit mode cleanly without mutation.
+
+### FR-DOC-009: Free-Text Selection and Granular Copying
+- **Description:** Enables native text selection across JSON, Tree, and Table views.
+- **Preconditions:** Document view rendered.
+- **Expected Behavior:** Applies `select-text` styling so users can highlight any field key, value, or substring and copy via Ctrl+C. Table cells provide one-click cell value copy triggers.
+- **Acceptance Criteria:**
+  - AC-DOC-18: Text in Raw JSON, Tree View, and Table cells can be highlighted and copied natively.
+
 ## 5. Business Rules
 ### BR-DOC-001: Pinned Primary Key
 - The `_id` field remains pinned to the leftmost position in Table View and is marked read-only during document updates.

@@ -73,11 +73,19 @@ export const SchemaAnalyzer: React.FC<SchemaAnalyzerProps> = ({
             typeName = "array";
           } else if (typeof val === "object") {
             if ("$oid" in (val as Record<string, unknown>)) {
-              typeName = "objectId";
+              typeName = "ObjectId";
             } else if ("$date" in (val as Record<string, unknown>)) {
               typeName = "date";
             } else {
               typeName = "object";
+            }
+          } else if (typeof val === "string") {
+            if (key === "_id" || /^[0-9a-fA-F]{24}$/.test(val)) {
+              typeName = "ObjectId";
+            } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(val)) {
+              typeName = "date";
+            } else {
+              typeName = "string";
             }
           }
 

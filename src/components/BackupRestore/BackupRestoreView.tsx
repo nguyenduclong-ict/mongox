@@ -103,7 +103,7 @@ export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({
             className="px-3 py-1.5 rounded-md bg-mongo hover:bg-emerald-600 text-xs font-semibold text-gray-950 flex items-center gap-1.5 transition-colors shadow-sm disabled:opacity-50"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>New Backup</span>
+            <span>New Dump</span>
           </button>
         </div>
       </div>

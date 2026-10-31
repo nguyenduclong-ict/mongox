@@ -11,6 +11,13 @@ import {
   BookmarkCheck,
   History,
   Trash2,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Loader2,
+  Copy,
+  FileJson,
 } from "lucide-react";
 
 interface QueryBarProps {
@@ -22,11 +29,18 @@ interface QueryBarProps {
   setProjection: (val: string) => void;
   limit: number;
   setLimit: (val: number) => void;
+  skip?: number;
+  onPageChange?: (newSkip: number) => void;
   onExecute: () => void;
   onExplain?: () => void;
   isLoading: boolean;
   elapsedMs: number;
   totalCount: number;
+  selectedCount?: number;
+  onCopySelectedIds?: () => void;
+  onCopySelectedJson?: () => void;
+  onDeleteSelected?: () => void;
+  onDeselectAll?: () => void;
 }
 
 export const QueryBar: React.FC<QueryBarProps> = ({
@@ -38,11 +52,18 @@ export const QueryBar: React.FC<QueryBarProps> = ({
   setProjection,
   limit,
   setLimit,
+  skip = 0,
+  onPageChange,
   onExecute,
   onExplain,
   isLoading,
   elapsedMs,
   totalCount,
+  selectedCount = 0,
+  onCopySelectedIds,
+  onCopySelectedJson,
+  onDeleteSelected,
+  onDeselectAll,
 }) => {
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
   const [showHistory, setShowHistory] = useState<boolean>(false);
@@ -206,10 +227,14 @@ export const QueryBar: React.FC<QueryBarProps> = ({
           type="button"
           onClick={handleRun}
           disabled={isLoading}
-          className="px-3.5 py-1.5 bg-mongo hover:bg-emerald-600 text-gray-950 font-semibold text-xs rounded-md flex items-center gap-1.5 transition-colors shadow-sm disabled:opacity-50 shrink-0"
+          className="px-3.5 py-1.5 bg-mongo hover:bg-emerald-600 text-gray-950 font-semibold text-xs rounded-md flex items-center justify-center gap-1.5 transition-colors shadow-sm disabled:opacity-50 shrink-0 min-w-[72px]"
         >
-          <Play className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : "fill-current"}`} />
-          <span>{isLoading ? "Running..." : "Run"}</span>
+          {isLoading ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-950" />
+          ) : (
+            <Play className="w-3.5 h-3.5 fill-current" />
+          )}
+          <span>Run</span>
           <kbd className="hidden md:inline text-[9px] bg-emerald-800/20 px-1 py-0.2 rounded border border-emerald-800/40 font-mono text-gray-900">
             Ctrl ↵
           </kbd>
@@ -369,23 +394,172 @@ export const QueryBar: React.FC<QueryBarProps> = ({
         </div>
       )}
 
-      {/* Query Stats Ribbon */}
-      <div className="flex items-center justify-between text-[11px] font-mono text-gray-400 pt-0.5">
-        <div className="flex items-center gap-3">
-          <span className="flex items-center gap-1 text-gray-300">
-            <Hash className="w-3 h-3 text-mongo" />
-            <span>{totalCount.toLocaleString()} documents</span>
-          </span>
-          <span className="flex items-center gap-1">
-            <Clock className="w-3 h-3 text-gray-500" />
-            <span>{elapsedMs} ms</span>
-          </span>
-        </div>
+      {/* Query Stats & Pagination Ribbon */}
+      {(() => {
+        const pageSize = limit;
+        const currentSkip = skip || 0;
+        const currentPage = Math.floor(currentSkip / pageSize) + 1;
+        const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+        const startRecord = totalCount === 0 ? 0 : currentSkip + 1;
+        const endRecord = Math.min(currentSkip + pageSize, totalCount);
 
-        <div className="text-gray-500 text-[10px]">
-          JSON Strict / Relaxed EJSON
-        </div>
-      </div>
+        return (
+          <div className="flex flex-wrap items-center justify-between text-[11px] font-mono text-gray-400 pt-0.5 gap-2">
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1 text-gray-300">
+                <Hash className="w-3 h-3 text-mongo" />
+                <span>
+                  {totalCount > 0
+                    ? `${startRecord.toLocaleString()} - ${endRecord.toLocaleString()} of ${totalCount.toLocaleString()} documents`
+                    : "0 documents"}
+                </span>
+              </span>
+              <span className="flex items-center gap-1">
+                <Clock className="w-3 h-3 text-gray-500" />
+                <span>{elapsedMs} ms</span>
+              </span>
+            </div>
+
+            {/* Multi-Selection Action Buttons (Inline with pagination bar) */}
+            {selectedCount > 0 && (
+              <div className="flex items-center gap-2 select-none animate-in fade-in duration-100">
+                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-mongo/10 border border-mongo/30 text-[11px] font-mono text-emerald-300">
+                  <span className="font-semibold text-white">{selectedCount}</span>
+                  <span>documents selected</span>
+                </div>
+                {onCopySelectedIds && (
+                  <button
+                    type="button"
+                    onClick={onCopySelectedIds}
+                    className="px-2 py-0.5 rounded bg-surface hover:bg-surface-hover text-gray-300 border border-hairline flex items-center gap-1 text-[11px] font-mono transition-colors"
+                    title="Copy Selected IDs"
+                  >
+                    <Copy className="w-3 h-3 text-sky-400" />
+                    <span>Copy IDs</span>
+                  </button>
+                )}
+                {onCopySelectedJson && (
+                  <button
+                    type="button"
+                    onClick={onCopySelectedJson}
+                    className="px-2 py-0.5 rounded bg-surface hover:bg-surface-hover text-gray-300 border border-hairline flex items-center gap-1 text-[11px] font-mono transition-colors"
+                    title="Copy Selected JSON Documents"
+                  >
+                    <FileJson className="w-3 h-3 text-mongo" />
+                    <span>Copy JSON</span>
+                  </button>
+                )}
+                {onDeleteSelected && (
+                  <button
+                    type="button"
+                    onClick={onDeleteSelected}
+                    className="px-2 py-0.5 rounded bg-guard/10 hover:bg-guard/20 text-red-300 border border-guard/30 flex items-center gap-1 text-[11px] font-mono transition-colors"
+                    title="Delete Selected Documents"
+                  >
+                    <Trash2 className="w-3 h-3 text-guard" />
+                    <span>Delete Selected</span>
+                  </button>
+                )}
+                {onDeselectAll && (
+                  <button
+                    type="button"
+                    onClick={onDeselectAll}
+                    className="px-1.5 py-0.5 rounded hover:bg-surface text-gray-400 hover:text-white text-[11px] transition-colors"
+                  >
+                    Deselect All
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Pagination Navigation Controls */}
+            <div className="flex items-center gap-2">
+              {/* Page size dropdown */}
+              <div className="flex items-center gap-1 text-[11px]">
+                <span className="text-gray-500">Show:</span>
+                <select
+                  value={limit}
+                  onChange={(e) => {
+                    const newLimit = Number(e.target.value);
+                    setLimit(newLimit);
+                    onPageChange?.(0);
+                  }}
+                  className="bg-surface border border-hairline rounded px-1.5 py-0.5 text-gray-200 focus:outline-none focus:border-mongo"
+                >
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={200}>200</option>
+                  <option value={500}>500</option>
+                </select>
+              </div>
+
+              <div className="h-3 w-[1px] bg-hairline" />
+
+              {/* Jump to page */}
+              <div className="flex items-center gap-1">
+                <span className="text-gray-500">Page</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={totalPages}
+                  value={currentPage}
+                  onChange={(e) => {
+                    const targetPage = Number(e.target.value);
+                    if (targetPage >= 1 && targetPage <= totalPages) {
+                      onPageChange?.((targetPage - 1) * pageSize);
+                    }
+                  }}
+                  className="w-12 px-1 py-0.5 bg-surface border border-hairline rounded text-center text-white focus:outline-none focus:border-mongo"
+                />
+                <span className="text-gray-500">of {totalPages}</span>
+              </div>
+
+              <div className="h-3 w-[1px] bg-hairline" />
+
+              {/* Nav Buttons */}
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => onPageChange?.(0)}
+                  disabled={currentPage <= 1 || isLoading}
+                  className="p-1 rounded hover:bg-surface text-gray-400 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent"
+                  title="First Page"
+                >
+                  <ChevronsLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onPageChange?.(Math.max(0, currentSkip - pageSize))}
+                  disabled={currentPage <= 1 || isLoading}
+                  className="p-1 rounded hover:bg-surface text-gray-400 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent"
+                  title="Previous Page"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onPageChange?.(currentSkip + pageSize)}
+                  disabled={currentPage >= totalPages || isLoading}
+                  className="p-1 rounded hover:bg-surface text-gray-400 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent"
+                  title="Next Page"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onPageChange?.((totalPages - 1) * pageSize)}
+                  disabled={currentPage >= totalPages || isLoading}
+                  className="p-1 rounded hover:bg-surface text-gray-400 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent"
+                  title="Last Page"
+                >
+                  <ChevronsRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

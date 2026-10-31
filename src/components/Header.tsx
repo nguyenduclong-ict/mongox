@@ -1,5 +1,5 @@
 import React from "react";
-import { Search, RefreshCw, Sparkles, ChevronRight, ShieldAlert, Server, Settings } from "lucide-react";
+import { RefreshCw, ChevronRight, ShieldAlert, Server, Settings } from "lucide-react";
 import { ConnectionProfile } from "../types";
 
 interface HeaderProps {
@@ -30,7 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="h-11 bg-panel border-b border-hairline px-4 flex items-center justify-between shrink-0 select-none">
       {/* Left: Brand & Breadcrumb */}
-      <div className="flex items-center gap-3 truncate max-w-[45%]">
+      <div className="flex items-center gap-3 truncate max-w-[65%]">
         <div className="flex items-center gap-2 shrink-0">
           <div className="w-5 h-5 rounded bg-mongo/10 border border-mongo/30 flex items-center justify-center text-mongo font-bold text-xs">
             X
@@ -50,7 +50,11 @@ export const Header: React.FC<HeaderProps> = ({
                   : "bg-surface border-hairline text-gray-300"
               }`}
             >
-              {isProd ? <ShieldAlert className="w-3 h-3 text-guard" /> : <Server className="w-3 h-3 text-mongo" />}
+              {isProd ? (
+                <ShieldAlert className="w-3 h-3 text-guard" />
+              ) : (
+                <Server className="w-3 h-3 text-mongo" />
+              )}
               <span className="capitalize">{activeConnection.environment}</span>
               {latencyMs !== undefined && latencyMs !== null && (
                 <span className="text-mongo ml-0.5">● {latencyMs}ms</span>
@@ -88,20 +92,6 @@ export const Header: React.FC<HeaderProps> = ({
         )}
       </div>
 
-      {/* Center: Command Palette Trigger */}
-      <div className="flex items-center">
-        <button
-          className="flex items-center gap-2 px-3 py-1 bg-surface hover:bg-surface-hover text-gray-400 hover:text-gray-200 border border-hairline rounded-md text-xs transition-colors duration-150 shadow-sm"
-          title="Command Palette (Ctrl + K)"
-        >
-          <Search className="w-3.5 h-3.5 text-gray-400" />
-          <span className="hidden sm:inline">Search databases, collections, tools...</span>
-          <kbd className="text-[10px] font-mono bg-panel px-1.5 py-0.5 rounded border border-hairline text-gray-400">
-            Ctrl K
-          </kbd>
-        </button>
-      </div>
-
       {/* Right: Quick actions */}
       <div className="flex items-center gap-2">
         <button
@@ -122,11 +112,6 @@ export const Header: React.FC<HeaderProps> = ({
             <Settings className="w-3.5 h-3.5" />
           </button>
         )}
-
-        <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded bg-mongo/10 border border-mongo/20 text-mongo text-xs font-mono">
-          <Sparkles className="w-3 h-3 text-mongo" />
-          <span>Tauri v2 + Rust</span>
-        </div>
       </div>
     </header>
   );

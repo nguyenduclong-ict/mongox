@@ -10,6 +10,7 @@ import {
   HardDrive,
   Key,
 } from "lucide-react";
+import { Checkbox } from "../ui/Checkbox";
 
 interface IndexManagerProps {
   connectionId: string;
@@ -206,26 +207,17 @@ export const IndexManager: React.FC<IndexManagerProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-4 text-xs text-gray-300 pt-1">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isUnique}
-                onChange={(e) => setIsUnique(e.target.checked)}
-                className="rounded bg-surface border-hairline text-mongo focus:ring-0"
-              />
-              <span>Unique Constraint</span>
-            </label>
-
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isSparse}
-                onChange={(e) => setIsSparse(e.target.checked)}
-                className="rounded bg-surface border-hairline text-mongo focus:ring-0"
-              />
-              <span>Sparse Index</span>
-            </label>
+          <div className="flex items-center gap-6 text-xs text-gray-300 pt-1">
+            <Checkbox
+              checked={isUnique}
+              onChange={(c) => setIsUnique(c)}
+              label="Unique Constraint"
+            />
+            <Checkbox
+              checked={isSparse}
+              onChange={(c) => setIsSparse(c)}
+              label="Sparse Index"
+            />
           </div>
 
           <div className="pt-2 flex items-center justify-end gap-2">

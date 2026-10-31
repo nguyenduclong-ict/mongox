@@ -70,7 +70,8 @@ impl ExportImportService {
     /// Pure function: Builds safe parameterized argument vector for mongoexport
     pub fn build_export_arguments(uri: &str, config: &ExportConfig) -> Vec<String> {
         let mut args = Vec::new();
-        args.push(format!("--uri={}", uri));
+        let clean_uri = crate::backup_service::BackupService::strip_database_from_uri(uri);
+        args.push(format!("--uri={}", clean_uri));
         args.push(format!("--db={}", config.database.trim()));
         args.push(format!("--collection={}", config.collection.trim()));
 
@@ -104,7 +105,8 @@ impl ExportImportService {
     /// Pure function: Builds safe parameterized argument vector for mongoimport
     pub fn build_import_arguments(uri: &str, config: &ImportConfig) -> Vec<String> {
         let mut args = Vec::new();
-        args.push(format!("--uri={}", uri));
+        let clean_uri = crate::backup_service::BackupService::strip_database_from_uri(uri);
+        args.push(format!("--uri={}", clean_uri));
         args.push(format!("--db={}", config.database.trim()));
         args.push(format!("--collection={}", config.collection.trim()));
 
@@ -133,6 +135,14 @@ impl ExportImportService {
                 args.push("--mode=insert".to_string());
                 args.push("--stopOnError".to_string());
             }
+        }
+
+        if config.drop_existing {
+            args.push("--drop".to_string());
+        }
+
+        if config.ignore_blanks {
+            args.push("--ignoreBlanks".to_string());
         }
 
         args.push(format!("--file={}", config.input_path.trim()));
@@ -312,7 +322,7 @@ impl ExportImportService {
                 if config.masking_rules.is_empty() {
                     // Direct export without masking
                     let args = Self::build_export_arguments(uri, config);
-                    let output = tokio::process::Command::new(path)
+                    let output = crate::process_runner::create_hidden_command(path)
                         .args(&args)
                         .output()
                         .await
@@ -347,7 +357,7 @@ impl ExportImportService {
                     temp_config.output_path = temp_raw_export.to_string_lossy().to_string();
 
                     let args = Self::build_export_arguments(uri, &temp_config);
-                    let output = tokio::process::Command::new(path)
+                    let output = crate::process_runner::create_hidden_command(path)
                         .args(&args)
                         .output()
                         .await
@@ -511,6 +521,14 @@ mod tests {
         assert!(args.contains(&"--fields=_id,name,email".to_string()));
         assert!(args.contains(&"--query={\"status\":\"active\"}".to_string()));
         assert!(args.contains(&"--out=customers.csv".to_string()));
+
+        // Test stripping URI database to avoid mongoexport conflict with --db
+        let conflict_uri_args = ExportImportService::build_export_arguments(
+            "mongodb://localhost:27017/test_db?authSource=admin",
+            &config,
+        );
+        assert!(conflict_uri_args.contains(&"--uri=mongodb://localhost:27017/?authSource=admin".to_string()));
+        assert!(conflict_uri_args.contains(&"--db=store_db".to_string()));
     }
 
     #[test]
@@ -522,6 +540,8 @@ mod tests {
             format: ExportFormat::Ndjson,
             input_path: "customers.ndjson".to_string(),
             conflict_mode: ConflictMode::Upsert,
+            drop_existing: true,
+            ignore_blanks: true,
         };
 
         let args =
@@ -531,6 +551,8 @@ mod tests {
         assert!(args.contains(&"--collection=customers".to_string()));
         assert!(args.contains(&"--type=json".to_string()));
         assert!(args.contains(&"--mode=upsert".to_string()));
+        assert!(args.contains(&"--drop".to_string()));
+        assert!(args.contains(&"--ignoreBlanks".to_string()));
         assert!(args.contains(&"--file=customers.ndjson".to_string()));
     }
 

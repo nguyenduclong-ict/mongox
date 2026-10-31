@@ -6,23 +6,26 @@ export default {
       colors: {
         canvas: {
           DEFAULT: "#08090A",
-          subtle: "#0B0F17",
+          subtle: "#0D0E10",
         },
         panel: {
-          DEFAULT: "#101216",
-          elevated: "#12151B",
+          DEFAULT: "#0F1012",
+          elevated: "#131417",
         },
         surface: {
-          DEFAULT: "#181B22",
-          hover: "#1E232D",
-          active: "#252B37",
+          DEFAULT: "#16171B",
+          hover: "#1F2025",
+          active: "#262830",
         },
         modal: {
-          DEFAULT: "#1F2430",
+          DEFAULT: "#121316",
+          surface: "#16171B",
+          recessed: "#0B0C0E",
         },
         hairline: {
-          DEFAULT: "#1F2937",
-          subtle: "rgba(255, 255, 255, 0.08)",
+          DEFAULT: "rgba(255, 255, 255, 0.08)",
+          subtle: "rgba(255, 255, 255, 0.05)",
+          strong: "rgba(255, 255, 255, 0.15)",
         },
         mongo: {
           DEFAULT: "#10B981",
@@ -40,6 +43,11 @@ export default {
       boxShadow: {
         linear: "0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px -4px rgba(0, 0, 0, 0.6)",
         modal: "0 0 0 1px rgba(255, 255, 255, 0.1), 0 20px 48px -8px rgba(0, 0, 0, 0.8)",
+      },
+      zIndex: {
+        "60": "60",
+        "70": "70",
+        "100": "100",
       },
     },
   },

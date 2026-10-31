@@ -22,6 +22,7 @@ interface CollectionWorkspaceProps {
     onConfirmed: () => Promise<void>
   ) => void;
   onOpenBackup: (db: string, col: string) => void;
+  onOpenRestore?: (db: string) => void;
   onOpenExport: (db: string, col: string) => void;
   onOpenImport: (db: string, col: string) => void;
 }
@@ -33,6 +34,7 @@ export const CollectionWorkspace: React.FC<CollectionWorkspaceProps> = ({
   isProduction,
   onRequireProductionConfirm,
   onOpenBackup,
+  onOpenRestore,
   onOpenExport,
   onOpenImport,
 }) => {
@@ -62,10 +64,10 @@ export const CollectionWorkspace: React.FC<CollectionWorkspaceProps> = ({
         <div className="flex items-center gap-1">
           <button
             onClick={() => setActiveTab("documents")}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
+            className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors border ${
               activeTab === "documents"
-                ? "bg-surface text-white border border-hairline shadow-sm"
-                : "text-gray-400 hover:text-gray-200"
+                ? "bg-surface text-white border-hairline shadow-sm"
+                : "text-gray-400 hover:text-gray-200 border-transparent hover:bg-surface/40"
             }`}
           >
             <Layers className="w-3.5 h-3.5 text-mongo" />
@@ -74,10 +76,10 @@ export const CollectionWorkspace: React.FC<CollectionWorkspaceProps> = ({
 
           <button
             onClick={() => setActiveTab("indexes")}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
+            className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors border ${
               activeTab === "indexes"
-                ? "bg-surface text-white border border-hairline shadow-sm"
-                : "text-gray-400 hover:text-gray-200"
+                ? "bg-surface text-white border-hairline shadow-sm"
+                : "text-gray-400 hover:text-gray-200 border-transparent hover:bg-surface/40"
             }`}
           >
             <Zap className="w-3.5 h-3.5 text-amber-400" />
@@ -86,10 +88,10 @@ export const CollectionWorkspace: React.FC<CollectionWorkspaceProps> = ({
 
           <button
             onClick={() => setActiveTab("schema")}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
+            className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors border ${
               activeTab === "schema"
-                ? "bg-surface text-white border border-hairline shadow-sm"
-                : "text-gray-400 hover:text-gray-200"
+                ? "bg-surface text-white border-hairline shadow-sm"
+                : "text-gray-400 hover:text-gray-200 border-transparent hover:bg-surface/40"
             }`}
           >
             <BarChart3 className="w-3.5 h-3.5 text-sky-400" />
@@ -102,11 +104,22 @@ export const CollectionWorkspace: React.FC<CollectionWorkspaceProps> = ({
           <button
             onClick={() => onOpenBackup(database, collection)}
             className="px-2.5 py-1 rounded bg-surface hover:bg-surface-hover text-xs font-mono text-gray-300 border border-hairline flex items-center gap-1.5 transition-colors"
-            title="Backup this collection"
+            title="Dump this collection (mongodump)"
           >
             <HardDriveDownload className="w-3 h-3 text-mongo" />
-            <span className="hidden sm:inline">Backup</span>
+            <span className="hidden sm:inline">Dump</span>
           </button>
+
+          {onOpenRestore && (
+            <button
+              onClick={() => onOpenRestore(database)}
+              className="px-2.5 py-1 rounded bg-surface hover:bg-surface-hover text-xs font-mono text-gray-300 border border-hairline flex items-center gap-1.5 transition-colors"
+              title="Restore database archive (mongorestore)"
+            >
+              <Upload className="w-3 h-3 text-amber-400" />
+              <span className="hidden sm:inline">Restore</span>
+            </button>
+          )}
 
           <button
             onClick={() => onOpenExport(database, collection)}

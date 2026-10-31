@@ -57,7 +57,12 @@ pub fn run() {
             commands::drop_index,
             commands::run_export,
             commands::run_import,
-            commands::preview_import_file
+            commands::preview_import_file,
+            commands::list_database_users,
+            commands::create_database_user,
+            commands::update_database_user,
+            commands::drop_database_user,
+            commands::select_path_dialog
         ])
         .run(tauri::generate_context!())
         .expect("Error while running Mongox application");

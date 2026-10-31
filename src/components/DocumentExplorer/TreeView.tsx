@@ -54,11 +54,11 @@ const TreeNode: React.FC<TreeNodeProps> = ({ name, value, level, onEditDoc }) =>
 
     return (
       <div
-        className="flex items-center gap-2 py-0.5 hover:bg-surface/40 px-2 rounded group"
+        className="flex items-center gap-2 py-0.5 hover:bg-surface/40 px-2 rounded group select-text cursor-text selection:bg-mongo/30 selection:text-white"
         style={{ paddingLeft: `${level * 16 + 8}px` }}
       >
-        <span className="text-gray-400 select-none">{name}:</span>
-        <span className={`${colorClass} truncate`}>
+        <span className="text-gray-400 select-text">{name}:</span>
+        <span className={`${colorClass} truncate select-text`}>
           {typeof value === "string" ? `"${value}"` : String(value)}
         </span>
       </div>
@@ -70,10 +70,10 @@ const TreeNode: React.FC<TreeNodeProps> = ({ name, value, level, onEditDoc }) =>
     : Object.entries(value as Record<string, unknown>);
 
   return (
-    <div className="select-none">
+    <div>
       <div
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center justify-between py-1 px-2 rounded hover:bg-surface/50 cursor-pointer group transition-colors"
+        className="flex items-center justify-between py-1 px-2 rounded hover:bg-surface/50 cursor-pointer group transition-colors select-none"
         style={{ paddingLeft: `${level * 16 + 8}px` }}
       >
         <div className="flex items-center gap-1.5 truncate">

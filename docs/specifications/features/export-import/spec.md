@@ -80,7 +80,17 @@ Implemented
 - **Failure Behavior:** If errors exceed user-defined threshold, halt import and generate summary log.
 - **Acceptance Criteria:**
   - AC-EXP-07: Executes selected conflict resolution policy upon encountering existing keys.
-  - AC-EXP-08: Reports total imported count, skipped count, and failed records upon completion.
+  - AC-EXP-08: Supports `--drop` option to clear collection prior to import.
+  - AC-EXP-09: Supports `--ignoreBlanks` to ignore empty or blank values in CSV/TSV input.
+  - AC-EXP-10: Reports total imported count, skipped count, and failed records upon completion.
+
+### FR-EXP-005: File and Folder Picker Integration
+- **Description:** Provides file and directory selection dialog triggers for export and import paths.
+- **Preconditions:** Export or Import modal open.
+- **Expected Behavior:** Provides an icon button beside output/input path fields to launch native file or directory picker.
+- **Acceptance Criteria:**
+  - AC-EXP-09: Directory picker populates target output directory in Export modal.
+  - AC-EXP-10: File picker populates target input file in Import modal.
 
 ## 5. Business Rules
 ### BR-EXP-001: PII Protection Default

@@ -3,9 +3,9 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::models::{
     ArchiveMetadata, BackupConfig, BackupFileInfo, ConnectionProfile, CreateIndexRequest,
-    DatabaseInfo, DownloadProgress, DropIndexRequest, ExplainResult, ExportConfig, ExportFormat,
-    ImportConfig, ImportPreview, IndexInfo, JobSummary, PingResult, QueryParams, QueryResult,
-    RestoreConfig, ToolKind, ToolStatus,
+    CreateUserRequest, DatabaseInfo, DownloadProgress, DropIndexRequest, ExplainResult,
+    ExportConfig, ExportFormat, ImportConfig, ImportPreview, IndexInfo, JobSummary, MongoUser,
+    PingResult, QueryParams, QueryResult, RestoreConfig, ToolKind, ToolStatus, UpdateUserRequest,
 };
 use crate::process_runner::{create_hidden_command, ProcessRunner};
 use crate::AppState;
@@ -448,4 +448,133 @@ pub async fn preview_import_file(
         _ => ExportFormat::Json,
     };
     crate::export_import::ExportImportService::preview_import_file(Path::new(&input_path), fmt)
+}
+
+// ==========================================
+// User Management Commands
+// ==========================================
+
+#[tauri::command]
+pub async fn list_database_users(
+    state: State<'_, AppState>,
+    connection_id: String,
+    database: String,
+) -> Result<Vec<MongoUser>, String> {
+    let profile = state
+        .connection_manager
+        .get_profile(&connection_id)
+        .ok_or_else(|| format!("Connection profile with id '{}' not found", connection_id))?;
+
+    let mongosh_path = state
+        .provisioner
+        .find_tool(ToolKind::Mongosh)
+        .map(|(p, _)| p);
+
+    crate::connection::ConnectionManager::list_database_users(
+        &profile.uri,
+        &database,
+        mongosh_path.as_deref(),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn create_database_user(
+    state: State<'_, AppState>,
+    req: CreateUserRequest,
+) -> Result<(), String> {
+    let profile = state
+        .connection_manager
+        .get_profile(&req.connection_id)
+        .ok_or_else(|| format!("Connection profile with id '{}' not found", req.connection_id))?;
+
+    let mongosh_path = state
+        .provisioner
+        .find_tool(ToolKind::Mongosh)
+        .map(|(p, _)| p);
+
+    crate::connection::ConnectionManager::create_database_user(
+        &profile.uri,
+        &req.database,
+        &req,
+        mongosh_path.as_deref(),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn update_database_user(
+    state: State<'_, AppState>,
+    req: UpdateUserRequest,
+) -> Result<(), String> {
+    let profile = state
+        .connection_manager
+        .get_profile(&req.connection_id)
+        .ok_or_else(|| format!("Connection profile with id '{}' not found", req.connection_id))?;
+
+    let mongosh_path = state
+        .provisioner
+        .find_tool(ToolKind::Mongosh)
+        .map(|(p, _)| p);
+
+    crate::connection::ConnectionManager::update_database_user(
+        &profile.uri,
+        &req.database,
+        &req.username,
+        &req,
+        mongosh_path.as_deref(),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn drop_database_user(
+    state: State<'_, AppState>,
+    connection_id: String,
+    database: String,
+    username: String,
+) -> Result<(), String> {
+    let profile = state
+        .connection_manager
+        .get_profile(&connection_id)
+        .ok_or_else(|| format!("Connection profile with id '{}' not found", connection_id))?;
+
+    let mongosh_path = state
+        .provisioner
+        .find_tool(ToolKind::Mongosh)
+        .map(|(p, _)| p);
+
+    crate::connection::ConnectionManager::drop_database_user(
+        &profile.uri,
+        &database,
+        &username,
+        mongosh_path.as_deref(),
+    )
+    .await
+}
+
+// ==========================================
+// Native Dialog Commands
+// ==========================================
+
+#[tauri::command]
+pub async fn select_path_dialog(
+    directory: bool,
+    default_path: Option<String>,
+) -> Result<Option<String>, String> {
+    tokio::task::spawn_blocking(move || {
+        let mut dialog = rfd::FileDialog::new();
+        if let Some(ref p) = default_path {
+            dialog = dialog.set_directory(p);
+        }
+        if directory {
+            let res = dialog.pick_folder();
+            Ok(res.map(|p| p.to_string_lossy().to_string()))
+        } else {
+            let res = dialog.pick_file();
+            Ok(res.map(|p| p.to_string_lossy().to_string()))
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
